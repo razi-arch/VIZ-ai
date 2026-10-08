@@ -190,14 +190,14 @@ Cross-referenced with [`work_plan.md`](file:///C:/Users/mdsma/Internship%20TM/vi
 
 | Module Name | Architecture Component | Target Date | Planned Status | Actual Status | Deliverable Details |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1. Hardware & NVR Integration** | Edge Devices (NVRs & IP Cameras) | Sept 23, 2026 | On hold | 🟡 **Simulated** | Synthetic 24/7 RTSP feeds deployed via FFmpeg containers. Physical NVR on hold pending site access. |
-| **2. Core Streaming Engine** | Media Pipeline Cluster (MediaMTX) | Sept 28, 2026 | In Progress | 🟢 **Completed** | Dual-node MediaMTX cluster running with WebRTC (<500ms) & HLS pass-through. |
+| **1. Hardware & NVR Integration** | Edge Devices (NVRs & IP Cameras) | Sept 23, 2026 | On hold | 🟢 **Completed** | Real Hikvision IP cameras integrated via automated MediaMTX Control API ingest (`cam_inno_lab`). Synthetic FFmpeg generators preserved for offline testing. |
+| **2. Core Streaming Engine** | Media Pipeline Cluster (MediaMTX) | Sept 28, 2026 | In Progress | 🟢 **Completed** | Dual-node MediaMTX cluster running with WebRTC (<500ms) & HLS pass-through, plus Control API (`:9997`/`:9996`) dynamic path orchestration. |
 | **3. Central Database & Cache** | Storage Layer (PostgreSQL & Redis) | Sept 30, 2026 | Not Started | 🟡 **Partially Completed** | PostgreSQL 15 deployed with schema & seed data. Redis caching pending. |
-| **4. Core VMS API & Security** | Control Plane (Node.js API Cluster) | Oct 6, 2026 | Not Started | 🟢 **Completed** | JWT authentication, RBAC (Admin/Operator), MediaMTX HTTP gatekeeper webhook (`/api/streams/auth`), signed stream links. |
+| **4. Core VMS API & Security** | Control Plane (Node.js API Cluster) | Oct 6, 2026 | Not Started | 🟢 **Completed** | JWT authentication, RBAC (Admin/Operator), MediaMTX HTTP gatekeeper webhook (`/api/streams/auth`), signed stream links, and live MediaMTX sync. |
 | **5. Operator Video Wall UI** | Consumer App (Web Dashboard) | Oct 9, 2026 | Not Started | 🟢 **Completed (Ahead of Schedule)** | Responsive multi-camera matrix (`1x1`, `2x2`, `3x3`), stream tiles, snapshot export, TM branding. |
-| **6. Camera & User Management** | Consumer App & Control Plane | Oct 14, 2026 | Not Started | 🟢 **Completed** | Full camera CRUD modals, staff user management UI, role permissions, cluster topology view. |
+| **6. Camera & User Management** | Consumer App & Control Plane | Oct 14, 2026 | Not Started | 🟢 **Completed** | Full camera CRUD modals, staff user management UI, role permissions, cluster topology view, and real-time feed health polling. |
 | **7. Central Traffic Gateway** | API Gateway / L7 Load Balancer | Oct 14, 2026 | Planned | ⚪ **Phase 2** | Reverse proxy routing user requests evenly across API servers. |
-| **8. Vision AI Analytics Engine** | Vision AI Workers (YOLO Engine) | Oct 20, 2026 | Planned | ⚪ **Phase 2** | Event detection webhook pushing real-time intrusion popups to the dashboard. |
+| **8. Vision AI Analytics Engine** | Vision AI Workers (YOLO Engine) | Oct 20, 2026 | Planned | 🟢 **Completed (Ahead of Schedule)** | Decoupled YOLOv8 + ByteTrack worker (`vision-worker/`), WebSocket telemetry broadcast, HTML5 canvas overlay with ROI Door Zone & Directional Tripwire. |
 | **9. Mass Broadcast Scaling** | 1:N Data Broadcast Fan-Out | Oct 23, 2026 | Planned | ⚪ **Phase 2** | Enterprise stream replication for hundreds of concurrent viewers. |
 
 ---
@@ -249,7 +249,42 @@ Open your browser and navigate to:
 http://localhost:5173
 ```
 
+### 7.5 Step 4: Launch the YOLOv8 Vision Worker (Module 8)
+In a separate terminal or virtual environment:
+```bash
+cd vision-worker
+pip install -r requirements.txt
+python vision_worker.py --rtsp "rtsp://admin:Hik24680!@175.140.166.217:1056/Streaming/Channels/101" --port 8765
+```
+*(On Windows, you can double-click `start_worker.bat`)*. The worker will connect to the live camera, start YOLOv8 ByteTrack tracking, and broadcast telemetry over `ws://localhost:8765`. On the web dashboard, click the **AI Active** button on the stream tile to see real-time bounding boxes, door breach detection, and directional tripwire counts!
+
 ---
+
+### 7.6 VPC Deployment Guide for MediaMTX & System Cluster
+
+When deploying to a cloud VPC (AWS, GCP, or Telekom Malaysia Cloud):
+
+#### 1. Security Group Inbound Firewall Rules
+Ensure the VPC Security Group opens the following ingress ports:
+* **WebRTC Video (UDP):** `8189-8190/udp` (Mandatory for sub-second WebRTC media delivery to operator browsers).
+* **WebRTC Signaling (HTTP):** `8889-8890/tcp` (WHEP signaling endpoints).
+* **HLS Video (HTTP):** `8887-8888/tcp` (Backup stream fallback).
+* **RTSP Ingest (TCP):** `8554-8555/tcp` (If cameras push to MediaMTX over VPN/VPC).
+* **MediaMTX Control API:** `9996-9997/tcp` (Internal VPC access only for the Node.js backend).
+* **Backend API & Web Dashboard:** `3000/tcp` and `5173` (or port 80/443 behind Nginx/ALB).
+* **YOLOv8 Telemetry:** `8765/tcp` (WebSocket telemetry port).
+
+#### 2. MediaMTX `webrtcAdditionalHosts` Setting
+In [`mediamtx-a.yml`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/mediamtx-a.yml) and [`mediamtx-b.yml`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/mediamtx-b.yml), replace `127.0.0.1` under `webrtcAdditionalHosts` with the **Public IP or Elastic IP** of your VPC EC2/VM instance:
+```yaml
+webrtcAdditionalHosts:
+  - "<YOUR_VPC_PUBLIC_OR_ELASTIC_IP>"
+```
+This ensures the browser WebRTC ICE candidate negotiation correctly reaches the cloud media server through NAT.
+
+#### 3. Handling Synthetic Feeds vs Real Cameras
+* **Testing / Simulation:** Keep `stream-generator-a` and `stream-generator-b` running.
+* **Production Deployment:** Once physical cameras or NVRs are connected, simply comment out the `stream-generator` services in `docker-compose.yml`. MediaMTX will dynamically pull directly from camera RTSP URLs via the automated Node.js Control API.
 
 ## 8. API & Data Model Reference
 

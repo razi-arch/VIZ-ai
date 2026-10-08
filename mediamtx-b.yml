@@ -1,11 +1,16 @@
 authMethod: http
 authHTTPAddress: http://host.docker.internal:3000/api/streams/auth
+
+api: yes
+apiAddress: :9997
+
 rtspAddress: :8555
 hlsAddress: :8887
 webrtcAddress: :8890
 webrtcLocalUDPAddress: :8190
 webrtcAdditionalHosts:
   - 127.0.0.1
+
 paths:
   all_others: {}
   cam2_main: {}

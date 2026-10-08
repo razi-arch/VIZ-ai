@@ -16,14 +16,19 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
 
-  # Stream Generator for Node A (Camera 1)
+  # ---------------------------------------------------------------------------
+  # Simulation Layer: Synthetic RTSP Test Feeds (FFmpeg)
+  # NOTE FOR PRODUCTION / VPC:
+  # When actual physical cameras or NVRs (Hikvision, Dahua, etc.) are connected,
+  # these two containers can be stopped or commented out. MediaMTX natively pulls
+  # live streams directly from physical camera RTSP addresses via its Control API.
+  # ---------------------------------------------------------------------------
   stream-generator-a:
     image: jrottenberg/ffmpeg:4.4-alpine
     container_name: stream-generator-a
     restart: always
     command: -re -f lavfi -i testsrc=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://mediamtx-pbt-a:8554/cam1_main
 
-  # Stream Generator for Node B (Camera 2)
   stream-generator-b:
     image: jrottenberg/ffmpeg:4.4-alpine
     container_name: stream-generator-b
@@ -40,6 +45,7 @@ services:
       - "8888:8888"       # HLS
       - "8889:8889"       # WebRTC HTTP
       - "8189:8189/udp"   # WebRTC UDP Media
+      - "9997:9997"       # MediaMTX API
     volumes:
       - ./mediamtx-a.yml:/mediamtx.yml:ro
 
@@ -53,6 +59,7 @@ services:
       - "8887:8887"       # HLS
       - "8890:8890"       # WebRTC HTTP
       - "8190:8190/udp"   # WebRTC UDP Media
+      - "9996:9997"       # MediaMTX API
     volumes:
       - ./mediamtx-b.yml:/mediamtx.yml:ro
 

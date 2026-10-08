@@ -8,11 +8,13 @@ import {
   AlertCircle, 
   Plus, 
   Check, 
-  Layers
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import Hls from 'hls.js';
 import type { Camera, FeedQuality } from '../types';
 import { formatNodeName, getNodeShortTag } from '../utils/terminology';
+import { AIOverlay } from './AIOverlay';
 
 interface StreamTileProps {
   camera: Camera | null;
@@ -33,6 +35,7 @@ export const StreamTile: React.FC<StreamTileProps> = ({
   const [isReloading, setIsReloading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [snapshotSuccess, setSnapshotSuccess] = useState<string | null>(null);
+  const [isAIOverlayEnabled, setIsAIOverlayEnabled] = useState<boolean>(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -316,6 +319,13 @@ export const StreamTile: React.FC<StreamTileProps> = ({
         )}
       </div>
 
+      {/* ================= DECOUPLED AI OVERLAY (YOLOv8) ================= */}
+      <AIOverlay
+        isVisible={isAIOverlayEnabled && !hasError && !isReloading}
+        wsUrl="ws://localhost:8765"
+        streamName={camera.name}
+      />
+
       {/* ================= MINIMAL DEFAULT HUD ================= */}
       {/* Top Left: 🔴 LIVE Badge & Camera Name */}
       <div className="absolute top-2.5 left-2.5 z-10 flex items-center space-x-2 pointer-events-none transition-opacity duration-200">
@@ -365,6 +375,23 @@ export const StreamTile: React.FC<StreamTileProps> = ({
 
           {/* Action Button Group */}
           <div className="flex items-center space-x-1.5">
+            {/* YOLOv8 AI Overlay Toggle */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsAIOverlayEnabled(!isAIOverlayEnabled);
+              }}
+              className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center space-x-1 border shadow transition-all ${
+                isAIOverlayEnabled
+                  ? 'bg-emerald-600/90 text-white border-emerald-500 hover:bg-emerald-500 shadow-emerald-600/30'
+                  : 'bg-tm-midnight/90 text-tm-muted border-tm-border hover:text-white'
+              }`}
+              title={isAIOverlayEnabled ? 'Disable YOLOv8 AI Telemetry Overlay' : 'Enable YOLOv8 AI Telemetry Overlay'}
+            >
+              <Sparkles className={`w-3 h-3 ${isAIOverlayEnabled ? 'text-emerald-200' : 'text-tm-muted'}`} />
+              <span>{isAIOverlayEnabled ? 'AI Active' : 'AI Off'}</span>
+            </button>
+
             {/* Feed Quality Switcher (WebRTC vs HLS) */}
             <button
               onClick={toggleFeedQuality}

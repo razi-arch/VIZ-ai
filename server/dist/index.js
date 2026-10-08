@@ -64,13 +64,17 @@ async function initDatabase() {
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
+        // Ensure api_port column exists in nodes
+        await pool.query('ALTER TABLE nodes ADD COLUMN IF NOT EXISTS api_port INT DEFAULT 9997;');
+        await pool.query("UPDATE nodes SET api_port = 9997 WHERE name = 'Node-A' AND api_port IS NULL;");
+        await pool.query("UPDATE nodes SET api_port = 9996 WHERE name = 'Node-B' AND api_port IS NULL;");
         // Seed default nodes if empty
         const nodeCount = await pool.query('SELECT COUNT(*) FROM nodes;');
         if (parseInt(nodeCount.rows[0].count) === 0) {
             await pool.query(`
-        INSERT INTO nodes (name, host, rtsp_port, webrtc_port, hls_port) VALUES
-        ('Node-A', 'localhost', 8554, 8889, 8888),
-        ('Node-B', 'localhost', 8555, 8890, 8887);
+        INSERT INTO nodes (name, host, rtsp_port, webrtc_port, hls_port, api_port) VALUES
+        ('Node-A', 'localhost', 8554, 8889, 8888, 9997),
+        ('Node-B', 'localhost', 8555, 8890, 8887, 9996);
       `);
         }
         // Seed default admin and operator users if empty
@@ -83,13 +87,106 @@ async function initDatabase() {
       ON CONFLICT (username) DO NOTHING;
     `, [adminHash, opHash]);
         console.log('[VizAI Database] Database schema and seed records verified successfully.');
+        // Automatically sync registered cameras with MediaMTX streaming cluster
+        await syncAllCamerasToMediaMTX();
     }
     catch (err) {
         console.error('[VizAI Database] Schema check notice:', err.message);
     }
 }
-// Initialize database schema asynchronously on boot
-initDatabase();
+// MediaMTX Dynamic Path Synchronization Helpers
+async function syncPathToMediaMTX(streamKey, rtspSourceUrl, nodeHost = 'localhost', apiPort = 9997) {
+    // If it's a simulated internal stream push (like mediamtx-pbt-a:8554), MediaMTX handles it as publisher
+    // If it's an external camera (e.g. Hikvision), MediaMTX pulls from the RTSP source
+    const isExternalRtsp = rtspSourceUrl && !rtspSourceUrl.includes('mediamtx-pbt-a:8554') && !rtspSourceUrl.includes('mediamtx-pbt-b:8555');
+    if (!isExternalRtsp)
+        return true;
+    const host = nodeHost === 'localhost' ? '127.0.0.1' : nodeHost;
+    const urlAdd = `http://${host}:${apiPort}/v3/config/paths/add/${streamKey}`;
+    const urlPatch = `http://${host}:${apiPort}/v3/config/paths/patch/${streamKey}`;
+    const payload = {
+        source: rtspSourceUrl,
+        sourceOnDemand: false,
+        rtspTransport: 'tcp'
+    };
+    try {
+        const res = await fetch(urlAdd, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+            console.log(`[MediaMTX Sync] Registered camera path "${streamKey}" on ${host}:${apiPort}`);
+            return true;
+        }
+        // If path already exists, patch it
+        const patchRes = await fetch(urlPatch, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (patchRes.ok) {
+            console.log(`[MediaMTX Sync] Updated camera path "${streamKey}" on ${host}:${apiPort}`);
+            return true;
+        }
+    }
+    catch (err) {
+        console.warn(`[MediaMTX Sync] Could not connect to MediaMTX API at ${host}:${apiPort}:`, err.message);
+    }
+    return false;
+}
+async function removePathFromMediaMTX(streamKey, nodeHost = 'localhost', apiPort = 9997) {
+    const host = nodeHost === 'localhost' ? '127.0.0.1' : nodeHost;
+    const url = `http://${host}:${apiPort}/v3/config/paths/delete/${streamKey}`;
+    try {
+        await fetch(url, { method: 'DELETE' });
+        console.log(`[MediaMTX Sync] Removed camera path "${streamKey}" from ${host}:${apiPort}`);
+    }
+    catch (err) {
+        console.warn(`[MediaMTX Sync] Could not remove path "${streamKey}":`, err.message);
+    }
+}
+async function syncAllCamerasToMediaMTX() {
+    try {
+        const query = `
+      SELECT c.stream_key, c.rtsp_source_url, n.host as node_host, COALESCE(n.api_port, 9997) as api_port
+      FROM cameras c
+      JOIN nodes n ON c.node_id = n.id;
+    `;
+        const res = await pool.query(query);
+        console.log(`[MediaMTX Sync] Syncing ${res.rows.length} cameras to streaming cluster...`);
+        for (const row of res.rows) {
+            await syncPathToMediaMTX(row.stream_key, row.rtsp_source_url, row.node_host, row.api_port);
+        }
+    }
+    catch (err) {
+        console.warn('[MediaMTX Sync] Initial camera sync notice:', err.message);
+    }
+}
+// Dynamic Feed Health Polling (Priority 1 in Roadmap)
+async function pollMediaMTXHealth() {
+    try {
+        const nodesRes = await pool.query('SELECT host, COALESCE(api_port, 9997) as api_port FROM nodes;');
+        for (const node of nodesRes.rows) {
+            const host = node.host === 'localhost' ? '127.0.0.1' : node.host;
+            const res = await fetch(`http://${host}:${node.api_port}/v3/paths/list`).catch(() => null);
+            if (!res || !res.ok)
+                continue;
+            const data = await res.json();
+            if (data && Array.isArray(data.items)) {
+                for (const item of data.items) {
+                    const isOnline = item.ready === true;
+                    await pool.query('UPDATE cameras SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE stream_key = $2 AND status != $1;', [isOnline ? 'ONLINE' : 'OFFLINE', item.name]).catch(() => { });
+                }
+            }
+        }
+    }
+    catch {
+        // silent catch for periodic poller
+    }
+}
+// Poll streaming nodes every 10 seconds for real-time health badges
+setInterval(pollMediaMTXHealth, 10000);
 // Authentication Middleware
 const authMiddleware = (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -147,6 +244,8 @@ const CAMERA_SELECT_QUERY = `
     c.rtsp_source_url, c.resolution, c.node_id,
     c.created_at, c.updated_at,
     n.name as node_name,
+    n.host as node_host,
+    COALESCE(n.api_port, 9997) as api_port,
     CONCAT('http://', n.host, ':', n.webrtc_port, '/', c.stream_key, '/') as webrtc_url,
     CONCAT('http://', n.host, ':', n.hls_port, '/', c.stream_key, '/') as hls_url
   FROM cameras c
@@ -369,7 +468,12 @@ app.post('/api/cameras', authMiddleware, async (req, res) => {
         const result = await pool.query(query, [name, stream_key, rtsp_source_url, resolvedNodeId, resolution]);
         const newId = result.rows[0].id;
         const fullCamResult = await pool.query(`${CAMERA_SELECT_QUERY} WHERE c.id = $1;`, [newId]);
-        res.status(201).json({ success: true, data: fullCamResult.rows[0] });
+        const addedCam = fullCamResult.rows[0];
+        // Automatically sync path to MediaMTX streaming node
+        if (addedCam) {
+            await syncPathToMediaMTX(addedCam.stream_key, addedCam.rtsp_source_url, addedCam.node_host, addedCam.api_port);
+        }
+        res.status(201).json({ success: true, data: addedCam });
     }
     catch (error) {
         res.status(400).json({ success: false, error: error.message });
@@ -426,7 +530,17 @@ app.put('/api/cameras/:id', authMiddleware, requireAdmin, async (req, res) => {
             id
         ]);
         const fullCamResult = await pool.query(`${CAMERA_SELECT_QUERY} WHERE c.id = $1;`, [id]);
-        res.json({ success: true, data: fullCamResult.rows[0] });
+        const updatedCam = fullCamResult.rows[0];
+        // If stream key changed, remove old path on MediaMTX
+        if (currentCam.stream_key !== updatedCam.stream_key) {
+            const oldNodeRes = await pool.query('SELECT host, COALESCE(api_port, 9997) as api_port FROM nodes WHERE id = $1', [currentCam.node_id]);
+            const oldHost = oldNodeRes.rows[0]?.host || 'localhost';
+            const oldPort = oldNodeRes.rows[0]?.api_port || 9997;
+            await removePathFromMediaMTX(currentCam.stream_key, oldHost, oldPort);
+        }
+        // Sync updated path to MediaMTX
+        await syncPathToMediaMTX(updatedCam.stream_key, updatedCam.rtsp_source_url, updatedCam.node_host, updatedCam.api_port);
+        res.json({ success: true, data: updatedCam });
     }
     catch (error) {
         res.status(400).json({ success: false, error: error.message });
@@ -440,10 +554,16 @@ app.delete('/api/cameras/:id', authMiddleware, requireAdmin, async (req, res) =>
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Camera not found.' });
         }
+        const deletedCam = result.rows[0];
+        // Remove path from MediaMTX
+        const nodeRes = await pool.query('SELECT host, COALESCE(api_port, 9997) as api_port FROM nodes WHERE id = $1', [deletedCam.node_id]);
+        const nodeHost = nodeRes.rows[0]?.host || 'localhost';
+        const apiPort = nodeRes.rows[0]?.api_port || 9997;
+        await removePathFromMediaMTX(deletedCam.stream_key, nodeHost, apiPort);
         res.json({
             success: true,
-            message: `Camera "${result.rows[0].name}" (${result.rows[0].stream_key}) deleted successfully.`,
-            data: result.rows[0]
+            message: `Camera "${deletedCam.name}" (${deletedCam.stream_key}) deleted successfully.`,
+            data: deletedCam
         });
     }
     catch (error) {

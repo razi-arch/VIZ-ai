@@ -9,6 +9,7 @@ CREATE TABLE nodes (
     rtsp_port INT NOT NULL,
     webrtc_port INT NOT NULL,
     hls_port INT NOT NULL,
+    api_port INT NOT NULL DEFAULT 9997,
     status VARCHAR(20) DEFAULT 'ACTIVE',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -27,9 +28,9 @@ CREATE TABLE cameras (
 );
 
 -- Seed Initial Nodes (Nodes A and B from Module 2)
-INSERT INTO nodes (name, host, rtsp_port, webrtc_port, hls_port) VALUES
-('Node-A', 'localhost', 8554, 8889, 8888),
-('Node-B', 'localhost', 8555, 8890, 8887);
+INSERT INTO nodes (name, host, rtsp_port, webrtc_port, hls_port, api_port) VALUES
+('Node-A', 'localhost', 8554, 8889, 8888, 9997),
+('Node-B', 'localhost', 8555, 8890, 8887, 9996);
 
 -- Seed Initial Camera Records
 INSERT INTO cameras (name, stream_key, rtsp_source_url, node_id) VALUES
