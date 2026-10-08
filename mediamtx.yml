@@ -1,0 +1,7 @@
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts:
+  - 127.0.0.1
+paths:
+  cam1_main: {}
+  cam1_sub: {}
