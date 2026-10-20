@@ -70,12 +70,21 @@ async function initDatabase() {
         await pool.query("UPDATE nodes SET api_port = 9996 WHERE name = 'Node-B' AND api_port IS NULL;");
         // Seed default nodes if empty
         const nodeCount = await pool.query('SELECT COUNT(*) FROM nodes;');
+        const configuredStreamHost = process.env.STREAM_HOST || 'localhost';
         if (parseInt(nodeCount.rows[0].count) === 0) {
             await pool.query(`
         INSERT INTO nodes (name, host, rtsp_port, webrtc_port, hls_port, api_port) VALUES
-        ('Node-A', 'localhost', 8554, 8889, 8888, 9997),
-        ('Node-B', 'localhost', 8555, 8890, 8887, 9996);
-      `);
+        ('Node-A', $1, 8554, 8889, 8888, 9997),
+        ('Node-B', $1, 8555, 8890, 8887, 9996);
+      `, [configuredStreamHost]);
+        }
+        else if (configuredStreamHost && configuredStreamHost !== 'localhost' && configuredStreamHost !== '127.0.0.1') {
+            await pool.query('UPDATE nodes SET host = $1 WHERE host = $2 OR host = $3;', [
+                configuredStreamHost,
+                'localhost',
+                '127.0.0.1'
+            ]);
+            console.log(`[VizAI Database] Synchronized node streaming hosts to VPC STREAM_HOST: ${configuredStreamHost}`);
         }
         // Seed default admin and operator users if empty
         const adminHash = await bcryptjs_1.default.hash('admin123', 10);
@@ -251,14 +260,28 @@ const CAMERA_SELECT_QUERY = `
   FROM cameras c
   LEFT JOIN nodes n ON c.node_id = n.id
 `;
-// Helper to append signed viewer token to URLs if user is authenticated
+// Helper to append signed viewer token to URLs and dynamically adapt host for VPC/remote clients
 const signCameraUrls = (camera, token) => {
-    if (!token)
-        return camera;
+    const envStreamHost = process.env.STREAM_HOST;
+    let webrtcUrl = camera.webrtc_url;
+    let hlsUrl = camera.hls_url;
+    if (envStreamHost && envStreamHost !== 'localhost' && envStreamHost !== '127.0.0.1') {
+        if (camera.node_host === 'localhost' || camera.node_host === '127.0.0.1') {
+            webrtcUrl = webrtcUrl?.replace('://localhost:', `://${envStreamHost}:`).replace('://127.0.0.1:', `://${envStreamHost}:`);
+            hlsUrl = hlsUrl?.replace('://localhost:', `://${envStreamHost}:`).replace('://127.0.0.1:', `://${envStreamHost}:`);
+        }
+    }
+    if (!token) {
+        return {
+            ...camera,
+            webrtc_url: webrtcUrl,
+            hls_url: hlsUrl
+        };
+    }
     return {
         ...camera,
-        webrtc_url: `${camera.webrtc_url}?token=${encodeURIComponent(token)}`,
-        hls_url: `${camera.hls_url}?token=${encodeURIComponent(token)}`
+        webrtc_url: `${webrtcUrl}?token=${encodeURIComponent(token)}`,
+        hls_url: `${hlsUrl}?token=${encodeURIComponent(token)}`
     };
 };
 /* ==========================================================================

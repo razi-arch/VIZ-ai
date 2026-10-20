@@ -1,430 +1,945 @@
-# VizAI Media Engine — Internship Technical Report & Handover Documentation
+# Telekom Malaysia (TM) • VizAI Media Engine
+## System Handover & Operational Deployment Documentation
 
-**Telekom Malaysia (TM) • Video Management System (VMS)**  
+**Project Name:** VizAI Media Engine (Web-Native Video Management System)  
+**Organization:** Telekom Malaysia (TM) Research & Development / Video Management Systems (VMS)  
 **Author:** Internship Engineering Team  
-**Date:** September 2026  
-**Status:** Phase 1 (P0 Core Prototype) — Active / Handover-Ready  
+**Date:** October 2026  
+**Document Version:** 1.0.0  
+**Classification:** Internal Handover / Technical Operations  
 
 ---
 
-## Table of Contents
+### Document Version History
 
-1. [Executive Summary](#1-executive-summary)
-2. [Problem Statement & Business Objectives](#2-problem-statement--business-objectives)
-3. [System Architecture & Topology](#3-system-architecture--topology)
-4. [Technology Stack](#4-technology-stack)
-5. [Core Modules & Technical Specifications](#5-core-modules--technical-specifications)
-   * [5.1 Edge Video Ingest & Simulation Layer](#51-edge-video-ingest--simulation-layer)
-   * [5.2 Media Pipeline Cluster (MediaMTX)](#52-media-pipeline-cluster-mediamtx)
-   * [5.3 Central Database Layer (PostgreSQL)](#53-central-database-layer-postgresql)
-   * [5.4 Control Plane & REST API (Node.js / Express)](#54-control-plane--rest-api-nodejs--express)
-   * [5.5 Operator Video Wall & Client UI (React + Tailwind CSS)](#55-operator-video-wall--client-ui-react--tailwind-css)
-6. [Milestone Progress & Deliverables Table](#6-milestone-progress--deliverables-table)
-7. [Installation, Setup & Deployment Guide](#7-installation-setup--deployment-guide)
-8. [API & Data Model Reference](#8-api--data-model-reference)
-9. [Next Steps & Engineering Handover Roadmap](#9-next-steps--engineering-handover-roadmap)
-10. [Troubleshooting & Operational FAQs](#10-troubleshooting--operational-faqs)
+| Rev | Date | Author / Contributor | Description of Changes | Approved By |
+| :--- | :--- | :--- | :--- | :--- |
+| **0.1** | 20/09/2026 | Internship Engineering Team | Initial prototype architecture notes and milestone tracking. | Supervisor |
+| **0.5** | 02/10/2026 | Internship Engineering Team | Dual-node MediaMTX cluster, PostgreSQL schema, and Express API added. | Supervisor |
+| **0.8** | 08/10/2026 | Internship Engineering Team | Added YOLOv8 Vision Worker, WebSocket telemetry, and RBAC authentication. | Supervisor |
+| **1.0** | 12/10/2026 | Internship Engineering Team | **Final Project Handover Documentation**: Standardized to TM handover format (Motorola reference), comprehensive step-by-step installation guides with explicit screenshot placeholders, architecture and data-flow diagrams, backup/restoration, and operational maintenance manuals. | Project SV |
 
 ---
 
-## 1. Executive Summary
+## Contents
 
-The **VizAI Media Engine** is a high-performance, web-native Video Management System (VMS) engineered for **Telekom Malaysia (TM)**. The platform bridges physical surveillance infrastructure (IP cameras and NVRs) to modern web dashboards, providing real-time, sub-second latency video delivery to browser clients without requiring legacy browser plugins, proprietary desktop software, or costly server-side transcoding.
-
-During Phase 1 (Prototype Deliverables), a distributed dual-node streaming cluster, an enterprise PostgreSQL directory, a Node.js REST API control plane, and a full-featured operator video wall compliant with Telekom Malaysia's brand identity were designed, implemented, and validated.
+- [1. System Overview](#1-system-overview)
+  - [1.1 Project Background & Objectives](#11-project-background--objectives)
+  - [1.2 Overall System Architecture](#12-overall-system-architecture)
+  - [1.3 End-to-End Data Flow Architecture](#13-end-to-end-data-flow-architecture)
+  - [1.4 Technology Stack & Software Versions](#14-technology-stack--software-versions)
+- [2. Hardware, VM & Infrastructure Requirements](#2-hardware-vm--infrastructure-requirements)
+  - [2.1 Sizing & Resource Allocation Matrix](#21-sizing--resource-allocation-matrix)
+  - [2.2 Network Port & Protocol Allocation Matrix](#22-network-port--protocol-allocation-matrix)
+  - [2.3 Software & Tool Prerequisites](#23-software--tool-prerequisites)
+- [3. Step-by-Step Installation & Setup Guide](#3-step-by-step-installation--setup-guide)
+  - [3.1 Step 1: Repository Clone & Workspace Setup](#31-step-1-repository-clone--workspace-setup)
+  - [3.2 Step 2: Environment Variable Configuration](#32-step-2-environment-variable-configuration)
+  - [3.3 Step 3: Infrastructure Deployment via Docker Compose](#33-step-3-infrastructure-deployment-via-docker-compose)
+  - [3.4 Step 4: Database Verification & Schema Initialization](#34-step-4-database-verification--schema-initialization)
+  - [3.5 Step 5: Backend API (Control Plane) Installation & Startup](#35-step-5-backend-api-control-plane-installation--startup)
+  - [3.6 Step 6: Frontend Operator Dashboard Installation & Startup](#36-step-6-frontend-operator-dashboard-installation--startup)
+  - [3.7 Step 7: Vision AI Telemetry Worker Setup (YOLOv8)](#37-step-7-vision-ai-telemetry-worker-setup-yolov8)
+  - [3.8 Step 8: Connecting Physical IP Cameras / NVR Channels](#38-step-8-connecting-physical-ip-cameras--nvr-channels)
+- [4. Service Verification & Testing Checklist](#4-service-verification--testing-checklist)
+  - [4.1 Service Health Verification Matrix](#41-service-health-verification-matrix)
+  - [4.2 WebRTC Low-Latency (<500ms) Playback Verification](#42-webrtc-low-latency-500ms-playback-verification)
+  - [4.3 HLS Failover Playback Verification](#43-hls-failover-playback-verification)
+  - [4.4 Vision AI Telemetry & Tripwire Verification](#44-vision-ai-telemetry--tripwire-verification)
+  - [4.5 Snapshot & Security Watermark Verification](#45-snapshot--security-watermark-verification)
+- [5. System Administration & Server Operations](#5-system-administration--server-operations)
+  - [5.1 Day-to-Day Process & Container Management](#51-day-to-day-process--container-management)
+  - [5.2 Container & Process Log Inspection](#52-container-process-log-inspection)
+  - [5.3 Production VPC & Nginx Reverse Proxy Deployment](#53-production-vpc--nginx-reverse-proxy-deployment)
+  - [5.4 WebRTC NAT Traversal Configuration (`webrtcAdditionalHosts`)](#54-webrtc-nat-traversal-configuration-webrtcadditionalhosts)
+- [6. Database Backup & Disaster Recovery Procedures](#6-database-backup--disaster-recovery-procedures)
+  - [6.1 Database Backup Procedure (`pg_dump`)](#61-database-backup-procedure-pg_dump)
+  - [6.2 Database Restoration Procedure (`pg_restore`)](#62-database-restoration-procedure-pg_restore)
+  - [6.3 Disaster Recovery Verification Checklist](#63-disaster-recovery-verification-checklist)
+- [7. Core API & Security Specification](#7-core-api--security-specification)
+  - [7.1 Authentication & Role-Based Access Control (RBAC)](#71-authentication--role-based-access-control-rbac)
+  - [7.2 MediaMTX HTTP Gatekeeper Webhook](#72-mediamtx-http-gatekeeper-webhook)
+  - [7.3 REST API Endpoints Specification](#73-rest-api-endpoints-specification)
+  - [7.4 Vision Worker WebSocket Telemetry Schema](#74-vision-worker-websocket-telemetry-schema)
+- [8. Preventive Maintenance & Housekeeping](#8-preventive-maintenance--housekeeping)
+  - [8.1 Docker Volume & Storage Cleanup](#81-docker-volume--storage-cleanup)
+  - [8.2 Database Optimization & Index Rebuilding](#82-database-optimization--index-rebuilding)
+  - [8.3 Security Updates & Dependency Audits](#83-security-updates--dependency-audits)
+- [9. Troubleshooting & Operational FAQs](#9-troubleshooting--operational-faqs)
 
 ---
 
-## 2. Problem Statement & Business Objectives
+## 1. System Overview
 
-### 2.1 Limitations of Traditional VMS Systems
-1. **High Latency:** Traditional streaming pipelines relying on standard HLS/DASH introduce 3 to 10 seconds of delay, making real-time perimeter monitoring and incident response sluggish.
-2. **Heavy Server Transcoding Costs:** Many commercial platforms decode and re-encode incoming RTSP streams on central servers, consuming excessive CPU/GPU resources and limiting scalability.
-3. **Proprietary Plugins:** Legacy systems require ActiveX controls, NPAPI plugins, or dedicated fat clients that run only on Windows workstations.
-4. **Single-Point Bottlenecks:** Centralized servers often crash or throttle under concurrent multi-camera fan-out.
+### 1.1 Project Background & Objectives
 
-### 2.2 Project Goals & Commercial Deliverables
-* **Sub-Second Latency:** Deliver live camera feeds to standard web browsers with under 500ms delay via WebRTC (WHEP).
-* **Pass-Through Efficiency:** Stream video via zero-transcoding pass-through, preserving server CPU resources for maximum stream density.
-* **Resilient Dual-Server Architecture:** Distribute camera ingest across multiple edge nodes (e.g., Cyberjaya Node-A and Puchong Node-B) to avoid single points of failure.
-* **Instant Failover / Backup Stream:** Provide automatic fallback to HTTP Live Streaming (HLS) if WebRTC UDP traffic is blocked by corporate enterprise firewalls.
-* **Enterprise Operator Dashboard:** Build a dark-mode web monitoring console supporting customizable camera matrices (`1x1`, `2x2`, `3x3`), stream diagnostics, and instant JPEG telemetry snapshot capture.
+The **VizAI Media Engine** is a high-performance, web-native Video Management System (VMS) engineered for **Telekom Malaysia (TM)**. The system bridges physical enterprise IP cameras, Network Video Recorders (NVRs), and video analytics with modern browser-based Security Operations Center (SOC) dashboards.
+
+Traditional enterprise VMS solutions suffer from severe drawbacks:
+1. **High Ingest Latency:** Standard HLS/DASH pipelines introduce 3 to 10 seconds of delay, making real-time perimeter protection and physical incident response impossible.
+2. **Heavy Server Transcoding Overhead:** Most commercial solutions decode and re-encode incoming RTSP feeds on centralized servers, wasting substantial GPU/CPU resources.
+3. **Proprietary Plugins & Thick Clients:** Legacy VMS interfaces require ActiveX controls, NPAPI plugins, or dedicated Windows client software, preventing browser-based cross-platform access.
+4. **Single-Node Bottlenecks:** Central media hubs often crash or throttle when distributing multi-camera video walls to concurrent operators.
+
+The VizAI Media Engine resolves these challenges by providing:
+* **Sub-Second Latency (<500ms):** Direct browser video streaming powered by WebRTC (WHEP — WebRTC HTTP Egress Protocol).
+* **Zero-Transcoding Pass-Through:** Ingests H.264 streams from IP cameras and repacketizes them into WebRTC RTP packets on the fly without CPU-heavy re-encoding.
+* **Resilient Dual-Node Cluster:** Multi-node edge routing (Node-A Cyberjaya and Node-B Puchong) distributing streaming traffic across nodes.
+* **Automated Dual-Protocol Fallback:** Instant failover to HTTP Live Streaming (HLS) if operator corporate firewalls block UDP/WebRTC traffic.
+* **Edge Vision AI Analytics:** Decoupled YOLOv8 neural network workers delivering real-time bounding box tracking, ROI intrusion zones, and directional tripwire events directly over WebSockets to client HTML5 canvas overlays.
 
 ---
 
-## 3. System Architecture & Topology
+### 1.2 Overall System Architecture
 
-The system is built on a 3-tier distributed architecture dividing ingest, stream distribution, data management, and user interaction:
+The following diagram illustrates the overall system architecture, network boundaries, and component interactions across the physical edge, media pipeline, central storage/control plane, and consumer operator applications.
 
 ```mermaid
 flowchart TD
-    subgraph EdgeLayer["Edge / Ingest Layer"]
-        NVR1["Physical NVR 01 (Cyberjaya)"]
-        NVR2["Physical NVR 02 (Puchong)"]
-        FFMPEG_A["FFmpeg Synthetic Ingest A<br/>(Camera 1: 1280x720 @ 30fps)"]
-        FFMPEG_B["FFmpeg Synthetic Ingest B<br/>(Camera 2: 1280x720 @ 30fps)"]
+    subgraph LayerEdge["1. Physical Edge & Ingest Simulation Layer"]
+        CAM1["Physical IP Camera 01<br/>(Hikvision / Dahua RTSP)"]
+        CAM2["Physical IP Camera 02<br/>(Hikvision / Dahua RTSP)"]
+        FFMPEG_A["FFmpeg Synthetic Ingest A<br/>(cam1_main • 1280x720 @ 30fps)"]
+        FFMPEG_B["FFmpeg Synthetic Ingest B<br/>(cam2_main • 1280x720 @ 30fps)"]
     end
 
-    subgraph StreamingCluster["Media Pipeline Cluster (Docker)"]
+    subgraph LayerCluster["2. Media Pipeline Cluster (Docker Multi-Container)"]
         subgraph NodeA["Streaming Node-A (mediamtx-pbt-a)"]
-            RTSP_A["RTSP Ingest: Port 8554"]
-            WHEP_A["WebRTC (WHEP): Port 8889 / UDP 8189"]
-            HLS_A["HLS Engine: Port 8888"]
+            RTSP_A["RTSP Ingest<br/>TCP Port 8554"]
+            WHEP_A["WebRTC WHEP Signaling<br/>HTTP Port 8889<br/>RTP UDP Port 8189"]
+            HLS_A["HLS Engine<br/>HTTP Port 8888"]
+            API_A["Control API<br/>TCP Port 9997"]
         end
 
         subgraph NodeB["Streaming Node-B (mediamtx-pbt-b)"]
-            RTSP_B["RTSP Ingest: Port 8555"]
-            WHEP_B["WebRTC (WHEP): Port 8890 / UDP 8190"]
-            HLS_B["HLS Engine: Port 8887"]
+            RTSP_B["RTSP Ingest<br/>TCP Port 8555"]
+            WHEP_B["WebRTC WHEP Signaling<br/>HTTP Port 8890<br/>RTP UDP Port 8190"]
+            HLS_B["HLS Engine<br/>HTTP Port 8887"]
+            API_B["Control API<br/>TCP Port 9996"]
         end
     end
 
-    subgraph ControlStorage["Storage & Control Plane"]
-        DB[("PostgreSQL 15<br/>Database: vizai_camera_db<br/>Port 5432")]
-        API["Node.js / Express API Cluster<br/>Port 3000"]
+    subgraph LayerControl["3. Storage, Control Plane & AI Workers"]
+        DB[("PostgreSQL 15 Database<br/>vizai_camera_db<br/>TCP Port 5432")]
+        API["Node.js / Express Control API<br/>JWT Auth & MediaMTX Sync<br/>HTTP Port 3000"]
+        AI["Python Vision Worker (YOLOv8)<br/>ByteTrack & Perimeter Tripwire<br/>WS Port 8765"]
     end
 
-    subgraph ConsumerClient["Consumer Application (Web)"]
-        UI["React 18 + Vite Operator Dashboard<br/>Port 5173"]
+    subgraph LayerConsumer["4. Consumer Presentation Layer (Web Browser)"]
+        UI["React 18 + Tailwind Operator Video Wall<br/>Vite Port 5173 / Production Port 80"]
+        CANVAS["Real-Time AI Canvas Overlay<br/>(Bounding Boxes, Intrusion Alerts)"]
     end
 
     %% Ingest Flows
+    CAM1 -.->|RTSP Stream| RTSP_A
+    CAM2 -.->|RTSP Stream| RTSP_B
     FFMPEG_A -->|RTSP Push| RTSP_A
     FFMPEG_B -->|RTSP Push| RTSP_B
-    NVR1 -.->|RTSP Push (Planned)| RTSP_A
-    NVR2 -.->|RTSP Push (Planned)| RTSP_B
 
-    %% Internal Communication
-    API <-->|SQL Queries (pg Pool)| DB
-    UI <-->|REST API / JSON| API
+    %% Control Plane Integration
+    API <-->|SQL Queries / Connection Pool| DB
+    API -->|Dynamic Path Creation / Health Polling| API_A
+    API -->|Dynamic Path Creation / Health Polling| API_B
+    NodeA -->|Auth Webhook /api/streams/auth| API
+    NodeB -->|Auth Webhook /api/streams/auth| API
 
-    %% Streaming Delivery
-    WHEP_A -->|WebRTC Feed (Primary <500ms)| UI
-    HLS_A -->|HLS Fallback Feed| UI
-    WHEP_B -->|WebRTC Feed (Primary <500ms)| UI
-    HLS_B -->|HLS Fallback Feed| UI
+    %% AI Pipeline
+    RTSP_A -.->|OpenCV Video Capture| AI
+    AI -->|WebSocket Telemetry JSON| CANVAS
+
+    %% Client Consumption
+    UI <-->|REST API / JWT Session| API
+    WHEP_A -->|WebRTC Media (<500ms Primary)| UI
+    HLS_A -->|HLS TS Segments (Fallback)| UI
+    WHEP_B -->|WebRTC Media (<500ms Primary)| UI
+    HLS_B -->|HLS TS Segments (Fallback)| UI
+    UI --- CANVAS
 ```
 
-### Network Port Allocation Matrix
+---
 
-| Service Container | Internal Role | Port | Protocol | Host Exposure |
+### 1.3 End-to-End Data Flow Architecture
+
+The data flow spans stream publishing, authentication verification, playback negotiation, and vision telemetry distribution:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Operator as SOC Operator (Web Browser)
+    participant UI as React Operator Dashboard
+    participant API as Node.js Control API (:3000)
+    participant DB as PostgreSQL 15 (:5432)
+    participant MTX as MediaMTX Node-A (:8889/:8554)
+    participant CAM as IP Camera / RTSP Source
+    participant AI as YOLOv8 Vision Worker (:8765)
+
+    %% Authentication & Onboarding
+    Note over Operator, DB: Phase 1: Authentication & Camera Onboarding
+    Operator->>UI: Input Credentials (admin / admin123)
+    UI->>API: POST /api/auth/login
+    API->>DB: Query user & verify bcrypt password
+    DB-->>API: User details (Role: ADMIN)
+    API-->>UI: JWT Bearer Token returned
+    UI->>API: GET /api/cameras (Bearer Token)
+    API->>DB: SELECT * FROM cameras JOIN nodes
+    DB-->>API: Camera records & node endpoints
+    API-->>UI: Camera roster JSON
+
+    %% Video Pipeline Ingest & Gatekeeping
+    Note over CAM, MTX: Phase 2: Stream Ingest & Security Gatekeeper
+    CAM->>MTX: RTSP Publish Request (cam1_main)
+    MTX->>API: Webhook POST /api/streams/auth (action: publish)
+    API-->>MTX: HTTP 200 OK (Authorized)
+    MTX-->>CAM: Ingest Handshake Complete (Video Active)
+
+    %% Video Playback (WebRTC with HLS Fallback)
+    Note over Operator, MTX: Phase 3: Ultra-Low Latency Video Delivery
+    Operator->>UI: Select Camera Tile (Camera 1 Main)
+    UI->>MTX: WHEP Signaling POST /cam1_main/whep (SDP Offer)
+    MTX->>API: Webhook POST /api/streams/auth (action: read)
+    API-->>MTX: HTTP 200 OK (Playback Permitted)
+    MTX-->>UI: SDP Answer (HTTP 201 Created)
+    MTX-->>UI: Direct WebRTC RTP Media Stream (<500ms UDP:8189)
+    alt WebRTC UDP Blocked by Firewall
+        UI->>MTX: Fallback GET /cam1_main/index.m3u8 (HLS Port 8888)
+        MTX-->>UI: HLS M3U8 Playlist + TS Chunks
+    end
+
+    %% AI Analytics Flow
+    Note over CAM, Operator: Phase 4: Vision AI Telemetry & Security Alerting
+    MTX-->>AI: RTSP Feed Capture (TCP :8554)
+    AI->>AI: YOLOv8 Inference + ByteTrack + Tripwire Math
+    Operator->>UI: Toggle [AI Active] Switch
+    UI->>AI: WebSocket Connect ws://localhost:8765
+    loop Every Video Frame (30 FPS)
+        AI-->>UI: Broadcast Telemetry (Bounding Boxes, Counts, Alert Flags)
+        UI->>Operator: Render Dynamic Canvas Overlay & Play Acoustic Beep
+    end
+```
+
+---
+
+### 1.4 Technology Stack & Software Versions
+
+The technology stack is purposefully chosen for zero-dependency portability, sub-second latency, and horizontal scalability:
+
+| Tier | Component / Software | Tested Version | License | Operational Role |
 | :--- | :--- | :--- | :--- | :--- |
-| `mediamtx-pbt-a` | Node-A RTSP Ingest | `8554` | TCP | `8554:8554` |
-| `mediamtx-pbt-a` | Node-A WebRTC Signaling (WHEP) | `8889` | HTTP/TCP | `8889:8889` |
-| `mediamtx-pbt-a` | Node-A WebRTC RTP Media | `8189` | UDP | `8189:8189/udp` |
-| `mediamtx-pbt-a` | Node-A HLS Playlist & Segments | `8888` | HTTP/TCP | `8888:8888` |
-| `mediamtx-pbt-b` | Node-B RTSP Ingest | `8555` | TCP | `8555:8555` |
-| `mediamtx-pbt-b` | Node-B WebRTC Signaling (WHEP) | `8890` | HTTP/TCP | `8890:8890` |
-| `mediamtx-pbt-b` | Node-B WebRTC RTP Media | `8190` | UDP | `8190:8190/udp` |
-| `mediamtx-pbt-b` | Node-B HLS Playlist & Segments | `8887` | HTTP/TCP | `8887:8887` |
-| `vizai-postgres` | PostgreSQL Database | `5432` | TCP | `5432:5432` |
-| `server` | VizAI Core API Express Server | `3000` | HTTP/TCP | `3000:3000` |
-| `client` | Operator Dashboard (Vite Dev) | `5173` | HTTP/TCP | `5173:5173` |
+| **Media Server Cluster** | [MediaMTX (Bluenviron)](https://github.com/bluenviron/mediamtx) | `v1.9.0` (Latest Docker) | MIT | Zero-transcoding RTSP-to-WebRTC (WHEP) and HLS media gateway. |
+| **Ingest Simulation** | FFmpeg Alpine | `4.4-alpine` | LGPL / GPL | Generates 24/7 test pattern streams (`lavfi testsrc`) with zero latency flags. |
+| **Database Engine** | PostgreSQL | `15.0-alpine` | PostgreSQL License | Relational storage for nodes, cameras, users, and stream health logs. |
+| **Backend Runtime** | Node.js | `v20.18.0` (LTS) | MIT | High-concurrency event-driven JavaScript server runtime. |
+| **Backend Framework** | Express.js | `^4.19.2` | MIT | REST API control plane, authentication, and MediaMTX webhooks. |
+| **Backend Language** | TypeScript | `^5.4.5` | Apache 2.0 | Type-safe backend logic and database abstraction. |
+| **Frontend Framework** | React + Vite | `React 18.3` / `Vite 5` | MIT | Single-page operator application with Instant Hot-Module Reloading. |
+| **Styling & Design** | Tailwind CSS | `^3.4.1` | MIT | Corporate Telekom Malaysia UI theme (`#FF5100` TM Orange, `#0B132B` Deep Slate). |
+| **Video Playback** | Native WHEP + `hls.js` | `hls.js ^1.5.8` | Apache 2.0 | Dual-protocol video rendering engine with sub-second WebRTC and resilient HLS fallback. |
+| **AI Vision Engine** | Ultralytics YOLOv8 | `8.2.0` | AGPL-3.0 | Real-time object tracking, person detection, and ByteTrack spatial analytics. |
+| **Computer Vision** | OpenCV Python | `opencv-python 4.9.0` | Apache 2.0 | Hardware-accelerated RTSP frame capture and zero-latency buffer extraction. |
+| **Container Engine** | Docker & Docker Compose | `Docker 24+ / Compose v2` | Apache 2.0 | Reproducible container orchestration for databases and streaming nodes. |
 
 ---
 
-## 4. Technology Stack
+## 2. Hardware, VM & Infrastructure Requirements
 
-| Category | Component / Tool | Version | Purpose |
+### 2.1 Sizing & Resource Allocation Matrix
+
+Depending on whether the deployment is a **single-machine local prototype**, an **on-premises VMware ESXi virtual cluster**, or a **cloud VPC deployment**, allocate resources based on the following hardware sizing specification:
+
+| Node / Role | Hostname / Service | CPU Cores | Memory (RAM) | Storage (SSD) | OS / Runtime | Recommended Purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Database Server** | `vizai-postgres` | 2 vCPU | 4 GB | 50 GB | Alpine / Ubuntu 22.04 | PostgreSQL 15 database instance and volume storage. |
+| **Streaming Node-A** | `mediamtx-pbt-a` | 4 vCPU | 8 GB | 100 GB | Ubuntu 22.04 (Docker) | Primary Cyberjaya ingest node (50 concurrent WebRTC streams). |
+| **Streaming Node-B** | `mediamtx-pbt-b` | 4 vCPU | 8 GB | 100 GB | Ubuntu 22.04 (Docker) | Secondary Puchong ingest node (50 concurrent WebRTC streams). |
+| **Control Plane API** | `vizai-core-api` | 2 vCPU | 4 GB | 30 GB | Ubuntu 22.04 / Node 20 | Express REST API server, auth webhook handler, health polling. |
+| **Web Operator UI** | `vizai-dashboard` | 1 vCPU | 2 GB | 20 GB | Nginx Web Server | Static Vite production build bundle serving the video wall. |
+| **Vision AI Worker** | `vizai-ai-worker` | 4 vCPU / 1 GPU | 8 GB (16 GB if GPU) | 100 GB | Ubuntu 22.04 / PyTorch | YOLOv8 inference (Nvidia T4, RTX 3060+, or 4-core AVX2 CPU). |
+| **Combined Dev Node** | *All-in-One PC* | 6–8 Cores | 16 GB | 120 GB SSD | Windows 11 / Ubuntu | Recommended workstation for single-machine local test and dev. |
+
+---
+
+### 2.2 Network Port & Protocol Allocation Matrix
+
+Ensure firewall policies (AWS Security Groups, ESXi vSwitch firewalls, or Linux `ufw`) permit traffic across the following ports:
+
+| Port | Protocol | Host Container / Service | Traffic Direction | Description & Operational Function |
+| :--- | :--- | :--- | :--- | :--- |
+| **5432** | TCP | `vizai-postgres` | Inbound / Internal | PostgreSQL database communication with API server. |
+| **8554** | TCP | `mediamtx-pbt-a` | Inbound | Node-A RTSP ingest port (Cameras/FFmpeg publish feeds here). |
+| **8555** | TCP | `mediamtx-pbt-b` | Inbound | Node-B RTSP ingest port (Cameras/FFmpeg publish feeds here). |
+| **8889** | TCP / HTTP | `mediamtx-pbt-a` | Inbound | Node-A WebRTC WHEP signaling endpoint. |
+| **8890** | TCP / HTTP | `mediamtx-pbt-b` | Inbound | Node-B WebRTC WHEP signaling endpoint. |
+| **8189** | UDP | `mediamtx-pbt-a` | Inbound / Outbound | Node-A WebRTC RTP media packet delivery to browser clients. |
+| **8190** | UDP | `mediamtx-pbt-b` | Inbound / Outbound | Node-B WebRTC RTP media packet delivery to browser clients. |
+| **8888** | TCP / HTTP | `mediamtx-pbt-a` | Inbound | Node-A HLS master playlist and transport stream chunk delivery. |
+| **8887** | TCP / HTTP | `mediamtx-pbt-b` | Inbound | Node-B HLS master playlist and transport stream chunk delivery. |
+| **9997** | TCP / HTTP | `mediamtx-pbt-a` | Internal VPC | Node-A MediaMTX REST Management Control API. |
+| **9996** | TCP / HTTP | `mediamtx-pbt-b` | Internal VPC | Node-B MediaMTX REST Management Control API (mapped to container 9997). |
+| **3000** | TCP / HTTP | `server (Node.js)` | Inbound | VizAI Core Control Plane REST API and MediaMTX webhook. |
+| **5173** | TCP / HTTP | `client (Vite)` | Inbound | Vite development server for the React operator dashboard. |
+| **8765** | TCP / WS | `vision-worker` | Inbound | Python WebSocket telemetry server broadcasting AI detections. |
+
+---
+
+### 2.3 Software & Tool Prerequisites
+
+Before proceeding with installation, ensure the following tools are installed on the deployment machine:
+
+1. **Operating System:** Ubuntu Linux 22.04 LTS (recommended for server) or Windows 10/11 64-bit with PowerShell 7+.
+2. **Docker Engine & Docker Compose:** Docker version `24.0.0+` and Docker Compose v2 (`docker compose version`).
+3. **Node.js Runtime:** Node.js version `20.x` or `22.x LTS` and npm version `10.x+`.
+4. **Python Environment (for AI Module):** Python `3.10` or higher with `pip` and virtual environment support (`python -m venv`).
+5. **Git Version Control:** Git `2.40+`.
+6. **Web Browser:** Google Chrome, Microsoft Edge, or Chromium browser (v115+) with WebSockets and WebRTC hardware acceleration enabled.
+
+Verify installed prerequisite versions via terminal:
+
+```bash
+# On Linux / macOS:
+git --version
+docker --version
+docker compose version
+node --version
+npm --version
+python3 --version
+
+# On Windows (PowerShell):
+git --version
+docker --version
+docker compose version
+node --version
+npm --version
+py --version
+```
+
+---
+
+## 3. Step-by-Step Installation & Setup Guide
+
+This section outlines the exact sequence of steps required to set up, configure, and boot the entire VizAI Media Engine from scratch. Explicit screenshot placeholders indicate the exact evidence to capture for handover audit reports.
+
+---
+
+### 3.1 Step 1: Repository Clone & Workspace Setup
+
+1. Open your terminal or PowerShell console.
+2. Clone the repository from the internal Telekom Malaysia source code repository:
+   ```bash
+   git clone <REPOSITORY_URL>
+   cd vizai-media-engine
+   ```
+3. Inspect the repository structure to verify all core directories and configuration files exist:
+   ```bash
+   # Linux / macOS
+   ls -la
+
+   # Windows PowerShell
+   Get-ChildItem
+   ```
+
+> 📸 **[Screenshot Placeholder 1: Repository Root Directory Structure]**  
+> *Capture your terminal window displaying the output of `ls -la` or `Get-ChildItem`. The screenshot must clearly show `docker-compose.yml`, `init.sql`, `mediamtx-a.yml`, `mediamtx-b.yml`, `server/`, `client/`, `vision-worker/`, and `yolov8n.pt`.*
+
+---
+
+### 3.2 Step 2: Environment Variable Configuration
+
+The Control Plane API and MediaMTX nodes require environment variables and networking parameters configured before boot.
+
+1. Navigate to the `server/` directory:
+   ```bash
+   cd server
+   ```
+2. Create the production `.env` configuration file from the template:
+   ```bash
+   # Linux / macOS
+   cp .env.example .env
+
+   # Windows PowerShell
+   Copy-Item .env.example .env
+   ```
+3. Open `server/.env` in your text editor (e.g. `nano .env` or `notepad .env`) and review the parameters:
+   ```ini
+   # Server Port
+   PORT=3000
+
+   # Central PostgreSQL Connection Settings
+   DB_HOST=localhost
+   DB_PORT=5432
+   DB_USER=vizai_admin
+   DB_PASSWORD=vizai_password
+   DB_NAME=vizai_camera_db
+
+   # JWT Security Secret for Operator Token Signing
+   JWT_SECRET=super_secret_jwt_key_tm_vms_production_2026
+
+   # Stream Access Token Strictness (false = permissive dev; true = strict production)
+   STREAM_SECURITY_STRICT=false
+   ```
+   *(Note: For production or shared deployments, generate a unique `JWT_SECRET` and update `DB_PASSWORD` to a secure string.)*
+
+4. Return to the repository root directory:
+   ```bash
+   cd ..
+   ```
+
+5. **Verify MediaMTX Configurations:**  
+   Open `mediamtx-a.yml` and `mediamtx-b.yml`. Note the `webrtcAdditionalHosts` setting:
+   ```yaml
+   webrtcAdditionalHosts:
+     - 127.0.0.1
+   ```
+   *(Note: For local testing, `127.0.0.1` is optimal. If deploying to a server or VPC VM, replace `127.0.0.1` with the server's LAN IP or Elastic Public IP).*
+
+> 📸 **[Screenshot Placeholder 2: Environment Configuration File (`server/.env`)]**  
+> *Capture a screenshot of your text editor or terminal displaying `server/.env` with the database credentials and JWT parameters clearly configured.*
+
+---
+
+### 3.3 Step 3: Infrastructure Deployment via Docker Compose
+
+The database and streaming cluster are orchestrated via Docker Compose.
+
+1. From the repository root, start the infrastructure containers in detached mode:
+   ```bash
+   docker compose up -d
+   ```
+2. Wait 10 seconds for the PostgreSQL container and MediaMTX instances to initialize.
+3. Check the status of all containers:
+   ```bash
+   docker compose ps
+   ```
+   Expected healthy containers:
+   * `vizai-postgres` (Status: Up, Port: 5432)
+   * `mediamtx-pbt-a` (Status: Up, Ports: 8554, 8888, 8889, 8189/udp, 9997)
+   * `mediamtx-pbt-b` (Status: Up, Ports: 8555, 8887, 8890, 8190/udp, 9996)
+   * `stream-generator-a` (Status: Up, FFmpeg Synthetic Feeds)
+   * `stream-generator-b` (Status: Up, FFmpeg Synthetic Feeds)
+
+> 📸 **[Screenshot Placeholder 3: Docker Compose Services Running]**  
+> *Capture your terminal showing the output of `docker compose ps` with all 5 containers (`vizai-postgres`, `mediamtx-pbt-a`, `mediamtx-pbt-b`, `stream-generator-a`, and `stream-generator-b`) displaying the `Up` status and port bindings.*
+
+---
+
+### 3.4 Step 4: Database Verification & Schema Initialization
+
+PostgreSQL automatically executes `init.sql` upon the initial volume creation.
+
+1. Test database connectivity using the container's native `pg_isready` tool:
+   ```bash
+   docker exec vizai-postgres pg_isready -U vizai_admin -d vizai_camera_db
+   ```
+   Expected output:
+   ```text
+   vizai_camera_db:5432 - accepting connections
+   ```
+
+2. Inspect the seeded tables and records using `psql`:
+   ```bash
+   docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "\dt"
+   ```
+   Expected tables listed:
+   * `nodes`
+   * `cameras`
+   * `users`
+
+3. Verify default streaming nodes in the database:
+   ```bash
+   docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "SELECT id, name, host, rtsp_port, webrtc_port, hls_port, api_port FROM nodes;"
+   ```
+
+4. Verify default cameras in the database:
+   ```bash
+   docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "SELECT id, name, stream_key, rtsp_source_url, status FROM cameras;"
+   ```
+
+> 📸 **[Screenshot Placeholder 4: PostgreSQL Database Table Verification]**  
+> *Capture terminal output showing the output of the SQL query displaying the initialized `nodes` (Node-A, Node-B) and `cameras` (`cam1_main`, `cam2_main`) rows inside PostgreSQL.*
+
+---
+
+### 3.5 Step 5: Backend API (Control Plane) Installation & Startup
+
+The backend is built in TypeScript and runs on Node.js.
+
+1. Open a **new dedicated terminal window** and change directory into `server/`:
+   ```bash
+   cd server
+   ```
+2. Install dependencies cleanly using `npm ci`:
+   ```bash
+   npm ci
+   ```
+3. Start the API server in development mode:
+   ```bash
+   npm run dev
+   ```
+4. Confirm successful boot. The console will output:
+   ```text
+   [Database] Initialized and verified schema tables successfully.
+   [MediaMTX Sync] Synced 2 camera paths with MediaMTX nodes.
+   [MediaMTX Health Polling] Active for nodes: Node-A, Node-B
+   [VizAI Core API] Running on http://localhost:3000
+   ```
+5. Leave this terminal open.
+6. In another terminal, verify the API health endpoint:
+   ```bash
+   # Linux / macOS
+   curl http://localhost:3000/
+
+   # Windows PowerShell
+   Invoke-RestMethod http://localhost:3000/
+   ```
+   Expected JSON response:
+   ```json
+   {
+     "status": "ONLINE",
+     "service": "VizAI Core API Service",
+     "timestamp": "2026-10-12T..."
+   }
+   ```
+
+> 📸 **[Screenshot Placeholder 5: Backend API Console & Health Endpoint]**  
+> *Capture a split or combined screenshot showing: (Left) The Node.js terminal running `npm run dev` with successful startup logs; (Right) A browser or curl terminal confirming `http://localhost:3000/` returns `{"status":"ONLINE"}`.*
+
+---
+
+### 3.6 Step 6: Frontend Operator Dashboard Installation & Startup
+
+The operator video wall runs as a React single-page application using Vite.
+
+1. Open a **new dedicated terminal window** and change directory into `client/`:
+   ```bash
+   cd client
+   ```
+2. Install frontend dependencies using `npm ci`:
+   ```bash
+   npm ci
+   ```
+3. Start the Vite development web server:
+   ```bash
+   npm run dev
+   ```
+4. The terminal will display the local development URL:
+   ```text
+     VITE v5.x.x  ready in 340 ms
+
+     ➜  Local:   http://localhost:5173/
+     ➜  Network: use --host to expose
+   ```
+5. Open your web browser and navigate to `http://localhost:5173`.
+6. Log into the system using the default administrative credentials:
+   * **Username:** `admin`
+   * **Password:** `admin123`
+   *(Or standard operator credentials: `operator` / `operator123`)*
+
+> 📸 **[Screenshot Placeholder 6: Operator Dashboard Login Screen]**  
+> *Capture the web browser displaying the VizAI Media Engine authentication screen with Telekom Malaysia branding and login dialog.*
+
+> 📸 **[Screenshot Placeholder 7: Operator Video Wall (Live Feeds)]**  
+> *Capture the web browser after logging in, showing the multi-channel video wall displaying the live `cam1_main` and `cam2_main` test video feeds with real-time green ONLINE badges, matrix buttons (`1x1`, `2x2`, `3x3`), and stream diagnostics.*
+
+---
+
+### 3.7 Step 7: Vision AI Telemetry Worker Setup (YOLOv8)
+
+The Vision Worker is a decoupled Python service that pulls live video from RTSP, runs YOLOv8 object detection, calculates spatial tripwire crossings, and broadcasts telemetry to the dashboard via WebSockets.
+
+1. Open a **new dedicated terminal window** and change directory into `vision-worker/`:
+   ```bash
+   cd vision-worker
+   ```
+2. Create and activate a Python virtual environment:
+   ```bash
+   # On Linux / macOS:
+   python3 -m venv .venv
+   source .venv/bin/activate
+
+   # On Windows (PowerShell):
+   py -3 -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+3. Install required Python packages:
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+4. Verify the YOLO model weights file exists in the repository root (`../yolov8n.pt`).
+5. Launch the Vision AI worker, pointing to the Node-A RTSP feed on port 8554:
+   ```bash
+   # Linux / macOS:
+   python vision_worker.py --rtsp "rtsp://localhost:8554/cam1_main" --port 8765 --model ../yolov8n.pt
+
+   # Windows (PowerShell):
+   python vision_worker.py --rtsp "rtsp://localhost:8554/cam1_main" --port 8765 --model ..\yolov8n.pt
+   ```
+   *(Note on Windows: You can also execute the included shortcut batch file `start_worker.bat`)*.
+6. The worker will initialize OpenCV, load the YOLOv8 model weights onto your CPU/GPU, and start listening on WebSocket port `8765`:
+   ```text
+   [INFO] Connecting background RTSP capture to: rtsp://localhost:8554/cam1_main
+   [INFO] RTSP stream connected successfully!
+   [INFO] WebSocket Telemetry Server started on 0.0.0.0:8765
+   ```
+7. Open the browser at `http://localhost:5173`. Hover over **Camera 1 Main** and toggle the **AI Active** button.
+8. The worker console will immediately output:
+   ```text
+   [INFO] Client connected to telemetry stream: 127.0.0.1
+   ```
+
+> 📸 **[Screenshot Placeholder 8: Vision AI Worker Terminal Output]**  
+> *Capture the Python worker terminal output showing successful RTSP stream connection, model initialization, and `Client connected to telemetry stream`.*
+
+> 📸 **[Screenshot Placeholder 9: Live Video Wall with AI Canvas Overlay]**  
+> *Capture the browser video wall with the AI overlay enabled, displaying real-time bounding boxes, FPS telemetry counters, ROI Door Intrusion box, and Directional Tripwire count stats.*
+
+---
+
+### 3.8 Step 8: Connecting Physical IP Cameras / NVR Channels
+
+When deploying with physical surveillance hardware (e.g., Hikvision, Dahua, or Uniview NVRs):
+
+1. **Verify Network Connectivity:**  
+   Ensure the host machine can ping the IP camera/NVR IP address over the surveillance VLAN or VPN.
+2. **Access Camera Registration in Dashboard:**  
+   Log in as an Administrator (`admin`), navigate to the **Camera Management** tab, and click **+ Register New Camera**.
+3. **Fill Camera Parameters:**  
+   * **Camera Name:** `TM Cyberjaya Gate 1`
+   * **Stream Key:** `tm_cyb_gate_01` (lowercase alphanumeric slug)
+   * **RTSP Source URL:** `rtsp://<CAMERA_USER>:<CAMERA_PASS>@<CAMERA_IP>:554/Streaming/Channels/101`
+   * **Target Node:** Select `Node-A (Cyberjaya)` or `Node-B (Puchong)`.
+   * **Resolution:** `1920x1080` or `1280x720`.
+4. Click **Save & Synchronize**.
+5. The API instantly calls the MediaMTX Control API (`POST :9997/v3/config/paths/add/tm_cyb_gate_01`) to begin on-demand RTSP pulling without restarting the server!
+6. Open the **Live Monitor** view to confirm video playback.
+7. *(Optional for clean production)*: Stop the synthetic test generators in `docker-compose.yml`:
+   ```bash
+   docker stop stream-generator-a stream-generator-b
+   ```
+
+> 📸 **[Screenshot Placeholder 10: Camera Registration Modal in Dashboard]**  
+> *Capture the web dashboard modal with camera name, RTSP source URL, and node selector filled out.*
+
+---
+
+## 4. Service Verification & Testing Checklist
+
+### 4.1 Service Health Verification Matrix
+
+Use this checklist during handover validation to verify all services are functioning properly:
+
+| Service Name | Check Command / URL | Expected Output / State | Verified? |
 | :--- | :--- | :--- | :--- |
-| **Media Server** | [MediaMTX (formerly rtsp-simple-server)](https://github.com/bluenviron/mediamtx) | `latest` | High-efficiency, zero-dependency streaming gateway converting RTSP to WebRTC/WHEP and HLS. |
-| **Ingest Simulation**| FFmpeg | `4.4-alpine` | Generates 24/7 test pattern streams (`lavfi testsrc`) with zero latency flags for prototype validation. |
-| **Database** | PostgreSQL | `15-alpine` | Persistent relational store for camera registry, streaming node topology, and UUID indexing. |
-| **Backend Runtime** | Node.js + Express | `Node 20+ / Express 4.19` | REST API control plane for camera registration, health checks, and dynamic URL generation. |
-| **Backend Language** | TypeScript | `^5.4.5` | Type-safe backend development using `ts-node-dev`. |
-| **Frontend Framework**| React 18 + Vite | `React 18.3 / Vite 5` | Ultra-fast single-page web dashboard with HMR and optimized asset bundling. |
-| **Styling & Design** | Tailwind CSS | `^3.4.1` | Corporate design implementation matching Telekom Malaysia's official design specification. |
-| **Icons & Assets** | Lucide React | `^1.16.0` | Comprehensive enterprise iconography for SOC operations. |
-| **Video Playback** | Native WebRTC WHEP + `hls.js` | `^1.5.8` | Dual-protocol video rendering engine with sub-second WebRTC and resilient HLS fallback. |
-| **Orchestration** | Docker & Docker Compose | `Compose 3.8` | Reproducible multi-container stack managing nodes, database, and stream generators. |
+| **PostgreSQL 15** | `docker exec vizai-postgres pg_isready` | `accepting connections` | [ ] Passed |
+| **MediaMTX Node-A** | `curl -s http://localhost:9997/v3/paths/list` | JSON listing active paths (`items: [...]`) | [ ] Passed |
+| **MediaMTX Node-B** | `curl -s http://localhost:9996/v3/paths/list` | JSON listing active paths (`items: [...]`) | [ ] Passed |
+| **Backend REST API** | `curl http://localhost:3000/` | `{"status":"ONLINE", ...}` | [ ] Passed |
+| **Camera List Endpoint**| `curl http://localhost:3000/api/cameras` | `{"success":true, "data":[...]}` | [ ] Passed |
+| **Frontend Web App** | Browser: `http://localhost:5173` | Login page loads with TM branding | [ ] Passed |
+| **YOLOv8 AI Worker** | Browser Console: `ws://localhost:8765` | WebSocket `101 Switching Protocols` | [ ] Passed |
 
 ---
 
-## 5. Core Modules & Technical Specifications
+### 4.2 WebRTC Low-Latency (<500ms) Playback Verification
 
-### 5.1 Edge Video Ingest & Simulation Layer
-* **Production Mapping:** Physical NVRs (Hikvision, Dahua, Uniview) transmitting RTSP video over internal enterprise LAN.
-* **Prototype Simulation:** Because physical NVR network connectivity is on hold pending site access, two containerized FFmpeg instances run continuously in `docker-compose.yml`:
-  ```yaml
-  command: -re -f lavfi -i testsrc=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://mediamtx-pbt-a:8554/cam1_main
-  ```
-* **Architecture Rule:** Ensures a **single-stream connection per camera feed** between camera/NVR and MediaMTX to prevent overloading physical NVR hardware.
+1. In the browser dashboard (`http://localhost:5173`), inspect **Camera 1 Main**.
+2. Open Chrome Developer Tools (**F12**) -> **Network Tab** -> Filter by `Fetch/XHR`.
+3. Verify the WHEP request to `http://localhost:8889/cam1_main/` completes with HTTP `201 Created`.
+4. Check the video timestamp against physical real-time or synthetic clock pattern. Delay should remain below **400ms**.
 
-### 5.2 Media Pipeline Cluster (MediaMTX)
-* Configured across two independent nodes:
-  * [`mediamtx-a.yml`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/mediamtx-a.yml): Listens on WebRTC `:8889`, UDP `:8189`, RTSP `:8554`.
-  * [`mediamtx-b.yml`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/mediamtx-b.yml): Listens on WebRTC `:8890`, UDP `:8190`, RTSP `:8555`.
-* **Zero-Transcoding Pass-Through:** Video packets are received in H.264 format and packetized into WebRTC RTP packets without decoding or re-encoding. This guarantees near-zero CPU consumption on host machines.
-
-### 5.3 Central Database Layer (PostgreSQL)
-Initialized automatically via [`init.sql`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/init.sql):
-* **UUID Primary Keys:** Uses PostgreSQL's `uuid-ossp` module for unique, distributed record IDs.
-* **`nodes` Table:** Stores cluster infrastructure details (`host`, `rtsp_port`, `webrtc_port`, `hls_port`, `status`).
-* **`cameras` Table:** Stores camera metadata (`name`, `stream_key`, `rtsp_source_url`, `node_id`, `resolution`, `status`, `created_at`).
-* **Relational Integrity:** Foreign key `node_id REFERENCES nodes(id) ON DELETE SET NULL` ensures camera records are safely preserved if a server node is decommissioned.
-
-### 5.4 Control Plane & REST API (Node.js / Express)
-Located in [`server/src/index.ts`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/server/src/index.ts):
-* **Dynamic URL Synthesis:** Joins the `cameras` table with the `nodes` table using SQL `CONCAT` to dynamically generate active WebRTC and HLS URLs based on the server node hosting the feed.
-* **Smart Node Resolution:** The `POST /api/cameras` endpoint accepts either raw UUIDs or integer identifiers (`1` for Node-A, `2` for Node-B) to streamline camera onboarding.
-* **CORS & Environment Isolation:** Fully decoupled backend configurable via `server/.env`.
-
-### 5.5 Operator Video Wall & Client UI (React + Tailwind CSS)
-Designed according to the [TM Design Specification](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/design-spec.md):
-* **Brand Styling:** TM Orange (`#FF5100`), TM Flame (`#F37021`), TM Deep Slate (`#0B132B`), and TM Midnight Slate (`#1C2541`).
-* **Dynamic Matrix Layout:** Seamlessly toggles between `1x1` (Focus inspection), `2x2` (Standard 4-channel wall), and `3x3` (9-channel overview).
-* **Smart Stream Tile Component ([StreamTile.tsx](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/client/src/components/StreamTile.tsx)):**
-  * Embedded WebRTC player via WHEP iframe.
-  * Resilient fallback to HLS using `hls.js` with manual protocol switching.
-  * Live status indicator pulse (🟢 Online / 🔴 Offline).
-  * Instant telemetry snapshot export to `.jpg` with embedded canvas watermark showing camera ID, timestamp, and host server.
-* **Management & Registration:**
-  * Modal with live stream key auto-slugging and preset generation.
-  * Cluster topology monitoring cards displaying port allocations and health.
+> 📸 **[Screenshot Placeholder 11: Developer Tools Network WHEP Handshake]**  
+> *Capture browser developer tools showing the successful HTTP 201 response for the WHEP request alongside the active WebRTC stream player.*
 
 ---
 
-## 6. Milestone Progress & Deliverables Table
+### 4.3 HLS Failover Playback Verification
 
-Cross-referenced with [`work_plan.md`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/work_plan.md):
+1. On the stream tile, locate the protocol dropdown or switch button.
+2. Switch playback from **WebRTC** to **HLS (Backup Stream)**.
+3. Verify in Developer Tools that the browser requests:
+   `http://localhost:8888/cam1_main/index.m3u8`
+4. Confirm HLS video chunks (`.ts` segments) load and play smoothly without interruption.
 
-| Module Name | Architecture Component | Target Date | Planned Status | Actual Status | Deliverable Details |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **1. Hardware & NVR Integration** | Edge Devices (NVRs & IP Cameras) | Sept 23, 2026 | On hold | 🟢 **Completed** | Real Hikvision IP cameras integrated via automated MediaMTX Control API ingest (`cam_inno_lab`). Synthetic FFmpeg generators preserved for offline testing. |
-| **2. Core Streaming Engine** | Media Pipeline Cluster (MediaMTX) | Sept 28, 2026 | In Progress | 🟢 **Completed** | Dual-node MediaMTX cluster running with WebRTC (<500ms) & HLS pass-through, plus Control API (`:9997`/`:9996`) dynamic path orchestration. |
-| **3. Central Database & Cache** | Storage Layer (PostgreSQL & Redis) | Sept 30, 2026 | Not Started | 🟡 **Partially Completed** | PostgreSQL 15 deployed with schema & seed data. Redis caching pending. |
-| **4. Core VMS API & Security** | Control Plane (Node.js API Cluster) | Oct 6, 2026 | Not Started | 🟢 **Completed** | JWT authentication, RBAC (Admin/Operator), MediaMTX HTTP gatekeeper webhook (`/api/streams/auth`), signed stream links, and live MediaMTX sync. |
-| **5. Operator Video Wall UI** | Consumer App (Web Dashboard) | Oct 9, 2026 | Not Started | 🟢 **Completed (Ahead of Schedule)** | Responsive multi-camera matrix (`1x1`, `2x2`, `3x3`), stream tiles, snapshot export, TM branding. |
-| **6. Camera & User Management** | Consumer App & Control Plane | Oct 14, 2026 | Not Started | 🟢 **Completed** | Full camera CRUD modals, staff user management UI, role permissions, cluster topology view, and real-time feed health polling. |
-| **7. Central Traffic Gateway** | API Gateway / L7 Load Balancer | Oct 14, 2026 | Planned | ⚪ **Phase 2** | Reverse proxy routing user requests evenly across API servers. |
-| **8. Vision AI Analytics Engine** | Vision AI Workers (YOLO Engine) | Oct 20, 2026 | Planned | 🟢 **Completed (Ahead of Schedule)** | Decoupled YOLOv8 + ByteTrack worker (`vision-worker/`), WebSocket telemetry broadcast, HTML5 canvas overlay with ROI Door Zone & Directional Tripwire. |
-| **9. Mass Broadcast Scaling** | 1:N Data Broadcast Fan-Out | Oct 23, 2026 | Planned | ⚪ **Phase 2** | Enterprise stream replication for hundreds of concurrent viewers. |
+> 📸 **[Screenshot Placeholder 12: HLS Fallback Stream Playback]**  
+> *Capture the browser stream tile displaying the HLS badge and developer tools showing regular `.ts` segment chunk downloads.*
 
 ---
 
-## 7. Installation, Setup & Deployment Guide
+### 4.4 Vision AI Telemetry & Tripwire Verification
 
-### 7.1 Prerequisites
-* **Docker Desktop:** Installed and running with Linux container support.
-* **Node.js:** v18.0.0 or higher.
-* **Package Manager:** `npm` (v9+) or `yarn`.
+1. On the stream tile, toggle **AI Active** to ON.
+2. In the AI Settings panel:
+   * Draw or enable the **ROI Door Intrusion Box**.
+   * Draw or enable the **Directional Tripwire**.
+3. Have a person walk across the tripwire or simulate motion in front of the camera.
+4. Verify that:
+   * The bounding box tracks the person with an assigned ID (e.g. `#1 Person 92%`).
+   * Crossing the tripwire increments the **IN / OUT Counter**.
+   * Entering the ROI door box triggers the red **ALARM: BREACH DETECTED** banner and audible alert.
 
-### 7.2 Step 1: Start Infrastructure Containers
-From the root repository directory:
-```bash
-docker compose up -d
-```
-Verify running containers:
-```bash
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-```
-Expected output:
-* `vizai-postgres` (Port 5432)
-* `mediamtx-pbt-a` (Ports 8554, 8888, 8889, 8189/udp)
-* `mediamtx-pbt-b` (Ports 8555, 8887, 8890, 8190/udp)
-* `stream-generator-a` (Up)
-* `stream-generator-b` (Up)
-
-### 7.3 Step 2: Launch the Backend API
-Navigate to the `server/` directory:
-```bash
-cd server
-npm install
-npm run dev
-```
-The server will boot on `http://localhost:3000`. You should see:
-```text
-[VizAI Core API] Running on http://localhost:3000
-```
-
-### 7.4 Step 3: Launch the Frontend Web Dashboard
-In a separate terminal, navigate to the `client/` directory:
-```bash
-cd client
-npm install
-npm run dev
-```
-Open your browser and navigate to:
-```text
-http://localhost:5173
-```
-
-### 7.5 Step 4: Launch the YOLOv8 Vision Worker (Module 8)
-In a separate terminal or virtual environment:
-```bash
-cd vision-worker
-pip install -r requirements.txt
-python vision_worker.py --rtsp "rtsp://admin:Hik24680!@175.140.166.217:1056/Streaming/Channels/101" --port 8765
-```
-*(On Windows, you can double-click `start_worker.bat`)*. The worker will connect to the live camera, start YOLOv8 ByteTrack tracking, and broadcast telemetry over `ws://localhost:8765`. On the web dashboard, click the **AI Active** button on the stream tile to see real-time bounding boxes, door breach detection, and directional tripwire counts!
+> 📸 **[Screenshot Placeholder 13: Perimeter Tripwire & Breach Detection Event]**  
+> *Capture the video feed showing a detected person crossing the virtual tripwire with the alert banner visible in the operator UI.*
 
 ---
 
-### 7.6 VPC Deployment Guide for MediaMTX & System Cluster
+### 4.5 Snapshot & Security Watermark Verification
 
-When deploying to a cloud VPC (AWS, GCP, or Telekom Malaysia Cloud):
+1. Hover over any active camera stream tile and click the **Camera Snapshot** icon.
+2. The browser will download an instant JPEG file (e.g., `snapshot_cam1_main_2026-10-12.jpg`).
+3. Open the downloaded image file.
+4. Verify that the bottom border contains an embedded forensic security watermark containing:
+   * Camera Name & Stream Key
+   * Server Node Identifier (`Node-A`)
+   * Exact Timestamp with Millisecond Precision
+   * Telekom Malaysia SOC Authentication Stamp
 
-#### 1. Security Group Inbound Firewall Rules
-Ensure the VPC Security Group opens the following ingress ports:
-* **WebRTC Video (UDP):** `8189-8190/udp` (Mandatory for sub-second WebRTC media delivery to operator browsers).
-* **WebRTC Signaling (HTTP):** `8889-8890/tcp` (WHEP signaling endpoints).
-* **HLS Video (HTTP):** `8887-8888/tcp` (Backup stream fallback).
-* **RTSP Ingest (TCP):** `8554-8555/tcp` (If cameras push to MediaMTX over VPN/VPC).
-* **MediaMTX Control API:** `9996-9997/tcp` (Internal VPC access only for the Node.js backend).
-* **Backend API & Web Dashboard:** `3000/tcp` and `5173` (or port 80/443 behind Nginx/ALB).
-* **YOLOv8 Telemetry:** `8765/tcp` (WebSocket telemetry port).
+> 📸 **[Screenshot Placeholder 14: Exported Snapshot with Watermark]**  
+> *Capture the exported JPEG image showing the watermark overlay along the bottom of the video frame.*
 
-#### 2. MediaMTX `webrtcAdditionalHosts` Setting
-In [`mediamtx-a.yml`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/mediamtx-a.yml) and [`mediamtx-b.yml`](file:///C:/Users/mdsma/Internship%20TM/vizai-media-engine/mediamtx-b.yml), replace `127.0.0.1` under `webrtcAdditionalHosts` with the **Public IP or Elastic IP** of your VPC EC2/VM instance:
-```yaml
-webrtcAdditionalHosts:
-  - "<YOUR_VPC_PUBLIC_OR_ELASTIC_IP>"
-```
-This ensures the browser WebRTC ICE candidate negotiation correctly reaches the cloud media server through NAT.
+---
 
-#### 3. Handling Synthetic Feeds vs Real Cameras
-* **Testing / Simulation:** Keep `stream-generator-a` and `stream-generator-b` running.
-* **Production Deployment:** Once physical cameras or NVRs are connected, simply comment out the `stream-generator` services in `docker-compose.yml`. MediaMTX will dynamically pull directly from camera RTSP URLs via the automated Node.js Control API.
+## 5. System Administration & Server Operations
 
-## 8. API & Data Model Reference
+### 5.1 Day-to-Day Process & Container Management
 
-### 8.1 Database Schema (`init.sql`)
+Routine administrative commands executed from the repository root:
 
-```sql
--- Table: Streaming Nodes
-CREATE TABLE nodes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(50) NOT NULL UNIQUE,
-    host VARCHAR(255) NOT NULL,
-    rtsp_port INT NOT NULL,
-    webrtc_port INT NOT NULL,
-    hls_port INT NOT NULL,
-    status VARCHAR(20) DEFAULT 'ACTIVE',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+```bash
+# Check running containers and port mappings
+docker compose ps
 
--- Table: Cameras
-CREATE TABLE cameras (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(100) NOT NULL,
-    stream_key VARCHAR(100) NOT NULL UNIQUE,
-    rtsp_source_url VARCHAR(255) NOT NULL,
-    node_id UUID REFERENCES nodes(id) ON DELETE SET NULL,
-    resolution VARCHAR(20) DEFAULT '1280x720',
-    status VARCHAR(20) DEFAULT 'ONLINE',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+# Stop all background infrastructure services (preserves database volume)
+docker compose stop
+
+# Restart infrastructure services
+docker compose start
+
+# Terminate containers (data preserved in Docker volume 'pgdata')
+docker compose down
+
+# Rebuild containers from scratch
+docker compose up -d --build
 ```
 
-### 8.2 API Endpoints
+---
 
-#### 1. System Health Check
-* **Endpoint:** `GET /`
-* **Response:**
-  ```json
-  {
-    "status": "ONLINE",
-    "service": "VizAI Core API Service"
-  }
-  ```
+### 5.2 Container & Process Log Inspection
 
-#### 2. List All Cameras
-* **Endpoint:** `GET /api/cameras`
-* **Response:**
-  ```json
-  {
-    "success": true,
-    "data": [
-      {
-        "id": "3e58251a-c3d2-4984-8a65-feb952b46b77",
-        "name": "Camera 1 Main",
-        "stream_key": "cam1_main",
-        "status": "ONLINE",
-        "node_name": "Node-A",
-        "webrtc_url": "http://localhost:8889/cam1_main/",
-        "hls_url": "http://localhost:8888/cam1_main/"
-      }
-    ]
-  }
-  ```
+When diagnosing stream failures or ingest issues, inspect logs:
 
-#### 3. Register New Camera
-* **Endpoint:** `POST /api/cameras`
-* **Request Headers:** `Content-Type: application/json`
-* **Request Body:**
-  ```json
-  {
-    "name": "Perimeter North Gate",
-    "stream_key": "cam_north_gate",
-    "rtsp_source_url": "rtsp://mediamtx-pbt-a:8554/cam_north_gate",
-    "node_id": 1
-  }
-  ```
-* **Response (HTTP 201):**
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "7f13904a-4dc2-48db-923f-e55d5bb96ef2",
-      "name": "Perimeter North Gate",
-      "stream_key": "cam_north_gate",
-      "rtsp_source_url": "rtsp://mediamtx-pbt-a:8554/cam_north_gate",
-      "node_id": "97e68cfb-...",
-      "resolution": "1280x720",
-      "status": "ONLINE"
+```bash
+# View last 100 lines of PostgreSQL logs
+docker compose logs --tail 100 postgres-db
+
+# Follow MediaMTX Node-A logs in real-time
+docker compose logs -f mediamtx-pbt-a
+
+# Follow MediaMTX Node-B logs in real-time
+docker compose logs -f mediamtx-pbt-b
+
+# View synthetic stream generator logs
+docker compose logs --tail 50 stream-generator-a
+```
+
+---
+
+### 5.3 Production VPC & Nginx Reverse Proxy Deployment
+
+In a hardened enterprise deployment (e.g. TM Cloud or AWS VPC), terminate TLS and route client requests through an Nginx reverse proxy on port 80/443.
+
+Example Nginx server block configuration (`/etc/nginx/sites-available/vizai.conf`):
+
+```nginx
+# Upstream Definitions
+upstream vizai_api {
+    server 127.0.0.1:3000;
+}
+
+upstream vizai_node_a_webrtc {
+    server 127.0.0.1:8889;
+}
+
+upstream vizai_node_a_hls {
+    server 127.0.0.1:8888;
+}
+
+upstream vizai_ai_worker {
+    server 127.0.0.1:8765;
+}
+
+server {
+    listen 80;
+    server_name vms.tmrnd.com.my;
+    # Redirect HTTP to HTTPS in production
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name vms.tmrnd.com.my;
+
+    ssl_certificate /etc/ssl/certs/vizai_bundle.crt;
+    ssl_certificate_key /etc/ssl/private/vizai.key;
+
+    # 1. Operator Web Dashboard Static Assets
+    location / {
+        root /var/www/vizai-media-engine/client/dist;
+        index index.html;
+        try_files $uri $uri/ /index.html;
     }
-  }
-  ```
 
-#### 4. Update Camera Configuration
-* **Endpoint:** `PUT /api/cameras/:id`
-* **Request Headers:** `Content-Type: application/json`
-* **Request Body:**
-  ```json
-  {
-    "name": "Perimeter North Gate - High Resolution",
-    "stream_key": "cam_north_gate",
-    "rtsp_source_url": "rtsp://mediamtx-pbt-a:8554/cam_north_gate",
-    "node_id": 1,
-    "resolution": "1920x1080",
-    "status": "ONLINE"
-  }
-  ```
-* **Response (HTTP 200):**
-  ```json
-  {
-    "success": true,
-    "data": {
-      "id": "7f13904a-4dc2-48db-923f-e55d5bb96ef2",
-      "name": "Perimeter North Gate - High Resolution",
-      "stream_key": "cam_north_gate",
-      "status": "ONLINE",
-      "resolution": "1920x1080",
-      "node_name": "Node-A",
-      "webrtc_url": "http://localhost:8889/cam_north_gate/",
-      "hls_url": "http://localhost:8888/cam_north_gate/"
+    # 2. Control Plane REST API
+    location /api/ {
+        proxy_pass http://vizai_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
-  }
-  ```
 
-#### 5. Delete Camera
-* **Endpoint:** `DELETE /api/cameras/:id`
-* **Response (HTTP 200):**
-  ```json
-  {
-    "success": true,
-    "message": "Camera \"Perimeter North Gate\" (cam_north_gate) deleted successfully.",
-    "data": {
-      "id": "7f13904a-4dc2-48db-923f-e55d5bb96ef2",
-      "name": "Perimeter North Gate",
-      "stream_key": "cam_north_gate"
+    # 3. WebRTC WHEP Signaling (Node-A)
+    location /node-a/whep/ {
+        proxy_pass http://vizai_node_a_webrtc/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
     }
-  }
-  ```
 
-#### 6. User Authentication & Login
-* **Endpoint:** `POST /api/auth/login`
+    # 4. HLS Stream Delivery (Node-A)
+    location /node-a/hls/ {
+        proxy_pass http://vizai_node_a_hls/;
+        proxy_http_version 1.1;
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    # 5. Vision AI Telemetry WebSocket
+    location /ws/telemetry/ {
+        proxy_pass http://vizai_ai_worker/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+    }
+}
+```
+
+---
+
+### 5.4 WebRTC NAT Traversal Configuration (`webrtcAdditionalHosts`)
+
+When deploying behind Network Address Translation (NAT) or a cloud Virtual Private Cloud (VPC), browser WebRTC sessions require public IP advertisement for ICE candidate exchange.
+
+1. Open `mediamtx-a.yml` and `mediamtx-b.yml`.
+2. Locate the `webrtcAdditionalHosts` section:
+   ```yaml
+   webrtcAdditionalHosts:
+     - "202.168.10.45"   # Replace with your external VPC Public/Elastic IP
+   ```
+3. Restart the MediaMTX containers:
+   ```bash
+   docker compose restart mediamtx-pbt-a mediamtx-pbt-b
+   ```
+4. Confirm WebRTC UDP ports (`8189` and `8190`) are permitted in the cloud firewall / security group.
+
+---
+
+## 6. Database Backup & Disaster Recovery Procedures
+
+To safeguard camera catalogs, user records, and streaming node metadata, follow these database backup and restoration procedures.
+
+---
+
+### 6.1 Database Backup Procedure (`pg_dump`)
+
+Backups are generated using PostgreSQL's native custom-format binary archiver (`pg_dump -F c`).
+
+1. Define a timestamped backup filename and execute `pg_dump` inside the container:
+   ```bash
+   # Linux / macOS / Windows PowerShell:
+   docker exec vizai-postgres pg_dump -U vizai_admin -F c -d vizai_camera_db -f /tmp/vizai_camera_db_backup.dump
+   ```
+
+2. Copy the backup file from the container to a secure local or external backup directory:
+   ```bash
+   # Copy to current working directory:
+   docker cp vizai-postgres:/tmp/vizai_camera_db_backup.dump ./vizai_camera_db_$(date +%Y%m%d).dump
+
+   # On Windows PowerShell:
+   $today = Get-Date -Format "yyyyMMdd"
+   docker cp vizai-postgres:/tmp/vizai_camera_db_backup.dump .\vizai_camera_db_$today.dump
+   ```
+
+3. Remove the temporary dump file inside the container:
+   ```bash
+   docker exec vizai-postgres rm /tmp/vizai_camera_db_backup.dump
+   ```
+
+> 📸 **[Screenshot Placeholder 15: Database Backup Execution]**  
+> *Capture terminal output showing the successful execution of `pg_dump` and `docker cp` resulting in the created `.dump` backup file.*
+
+---
+
+### 6.2 Database Restoration Procedure (`pg_restore`)
+
+In the event of database corruption, data loss, or server migration:
+
+1. Ensure the PostgreSQL container is running:
+   ```bash
+   docker compose up -d postgres-db
+   ```
+
+2. Copy your verified backup file into the container:
+   ```bash
+   docker cp ./vizai_camera_db_YYYYMMDD.dump vizai-postgres:/tmp/restore_target.dump
+   ```
+
+3. Restore the schema and data using `pg_restore` with clean flags (`--clean --if-exists` drops existing objects before recreating them):
+   ```bash
+   docker exec vizai-postgres pg_restore -U vizai_admin -d vizai_camera_db --clean --if-exists /tmp/restore_target.dump
+   ```
+
+4. Clean up the temporary restoration file:
+   ```bash
+   docker exec vizai-postgres rm /tmp/restore_target.dump
+   ```
+
+5. Restart the Node.js API server to refresh database connection pools:
+   ```bash
+   # Restart API server terminal
+   npm run dev
+   ```
+
+> 📸 **[Screenshot Placeholder 16: Database Restore Execution]**  
+> *Capture terminal output showing the `pg_restore` command executing cleanly and returning exit code 0.*
+
+---
+
+### 6.3 Disaster Recovery Verification Checklist
+
+After executing a database restoration, perform this sanity check:
+
+1. **Check Camera Records:**
+   ```bash
+   docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "SELECT count(*) FROM cameras;"
+   ```
+2. **Check Streaming Node Records:**
+   ```bash
+   docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "SELECT name, host, webrtc_port FROM nodes;"
+   ```
+3. **Check User Logins:**  
+   Log into the web dashboard at `http://localhost:5173` using `admin` / `admin123`.
+
+---
+
+## 7. Core API & Security Specification
+
+### 7.1 Authentication & Role-Based Access Control (RBAC)
+
+The system enforces JSON Web Token (JWT) Bearer authentication with two roles:
+
+* **`ADMIN`:** Full administrative access. Can register new cameras, edit camera settings, delete cameras, view node topology, and create/manage staff operator accounts.
+* **`OPERATOR`:** Read-only surveillance access. Can view live video streams, toggle AI overlays, switch WebRTC/HLS protocols, and export forensic snapshots. Cannot edit camera routes or access user accounts.
+
+#### Login Authentication Endpoint:
+* **Route:** `POST /api/auth/login`
 * **Request Body:**
   ```json
   {
@@ -438,7 +953,7 @@ CREATE TABLE cameras (
     "success": true,
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "user": {
-      "id": "c1f7a63d-...",
+      "id": "c1f7a63d-4c8a-4db5-9e63-b1d6e0a84e49",
       "username": "admin",
       "full_name": "VMS System Administrator",
       "role": "ADMIN"
@@ -446,23 +961,14 @@ CREATE TABLE cameras (
   }
   ```
 
-#### 7. Staff User Directory (RBAC)
-* **List Users:** `GET /api/users` (Header: `Authorization: Bearer <token>`, Admin only)
-* **Create User:** `POST /api/users` (Header: `Authorization: Bearer <token>`, Admin only)
-  ```json
-  {
-    "username": "operator2",
-    "password": "password123",
-    "full_name": "John Doe",
-    "role": "OPERATOR"
-  }
-  ```
-* **Delete User:** `DELETE /api/users/:id` (Header: `Authorization: Bearer <token>`, Admin only)
+---
 
-#### 8. MediaMTX Security Gatekeeper Webhook
-* **Endpoint:** `POST /api/streams/auth`
-* **Triggered by:** MediaMTX streaming cluster nodes upon incoming publish/read request.
-* **Payload from MediaMTX:**
+### 7.2 MediaMTX HTTP Gatekeeper Webhook
+
+MediaMTX delegates stream publishing and viewing permissions to the Node.js Control Plane via HTTP webhooks configured in `mediamtx-a.yml` and `mediamtx-b.yml`:
+
+* **Webhook Address:** `http://host.docker.internal:3000/api/streams/auth`
+* **Request Payload Sent by MediaMTX:**
   ```json
   {
     "action": "read",
@@ -472,65 +978,164 @@ CREATE TABLE cameras (
     "query": "token=eyJhbGciOi..."
   }
   ```
-* **Response:** HTTP 200 (Access Granted) or HTTP 403 (Access Denied).
-
-#### 9. Generate Signed Stream Token
-* **Endpoint:** `POST /api/streams/token` (Header: `Authorization: Bearer <token>`)
-* **Request Body:** `{"stream_key": "cam1_main"}`
-* **Response:** Returns short-lived signed playback JWT token.
+* **Authorization Behavior:**
+  * If `STREAM_SECURITY_STRICT=false`: Returns HTTP 200 (Permissive development mode).
+  * If `STREAM_SECURITY_STRICT=true`: Validates token signature and expiration. Returns HTTP 200 (Allowed) or HTTP 403 (Denied).
 
 ---
 
-## 9. Next Steps & Engineering Handover Roadmap
+### 7.3 REST API Endpoints Specification
 
-With Modules 2, 4, 5, and 6 completed, the remaining prototype and post-prototype tasks are:
-
-### Priority 1: Dynamic Feed Health Polling (Module 6)
-* Query MediaMTX's internal management API (`/v3/paths/list`) periodically or listen to path hooks so that the `ONLINE` / `OFFLINE` indicators dynamically turn red when an RTSP feed drops.
-
-### Priority 2: Central Database Caching Layer (Redis - Module 3)
-* Add a Redis service container to `docker-compose.yml`.
-* Cache camera-to-node routing lookups in Node.js to eliminate redundant SQL joins during high concurrency.
-
-### Priority 3: Physical NVR & Camera Integration (Module 1)
-* When physical hardware is available on the local network:
-  1. Comment out `stream-generator-a` and `stream-generator-b` in `docker-compose.yml`.
-  2. Configure MediaMTX paths to pull directly from the NVR:
-     ```yaml
-     paths:
-       nvr_cam1:
-         source: rtsp://admin:password@192.168.1.100:554/Streaming/Channels/101
-         sourceOnDemand: yes
-     ```
-  3. Update `init.sql` records to point to the actual physical RTSP endpoints.
-
-### Priority 5: Vision AI (YOLO) Event Engine Integration (Phase 2)
-* Connect a Python/YOLO container to RTSP feeds from MediaMTX.
-* Create a WebSocket server in Node.js to receive AI alert payloads (bounding boxes, timestamps, classes) and push instant alert banners to active operator dashboards.
+| Method | Endpoint | Access Level | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/` | Public | System service health check. |
+| `POST` | `/api/auth/login` | Public | Authenticates user; returns JWT token. |
+| `GET` | `/api/cameras` | Authenticated | Returns all registered cameras joined with active streaming node URLs. |
+| `POST` | `/api/cameras` | Admin Only | Registers a new camera and orchestrates MediaMTX dynamic path. |
+| `PUT` | `/api/cameras/:id` | Admin Only | Updates camera metadata, resolution, or RTSP source. |
+| `DELETE`| `/api/cameras/:id` | Admin Only | Deletes camera and purges dynamic path from MediaMTX. |
+| `GET` | `/api/nodes` | Authenticated | Lists streaming cluster nodes and health status. |
+| `GET` | `/api/users` | Admin Only | Lists all staff operator accounts. |
+| `POST` | `/api/users` | Admin Only | Creates a new staff operator account with encrypted password. |
+| `DELETE`| `/api/users/:id` | Admin Only | Removes a staff operator account. |
+| `POST` | `/api/streams/auth` | Internal Webhook | MediaMTX authentication gatekeeper webhook. |
+| `POST` | `/api/streams/token`| Authenticated | Generates short-lived signed playback tokens for secured streams. |
 
 ---
 
-## 10. Troubleshooting & Operational FAQs
+### 7.4 Vision Worker WebSocket Telemetry Schema
 
-### Q1: WebRTC stream shows a black screen or fails to connect
-* **Cause:** The WebRTC UDP media port (`8189` or `8190`) is blocked by a Windows firewall or Docker network bridge.
-* **Resolution:** 
-  1. Verify `webrtcAdditionalHosts: - 127.0.0.1` is set in the MediaMTX config.
-  2. Test switching to the **Backup Feed (HLS)** toggle on the stream card to confirm if video packets are reaching MediaMTX.
-  3. Ensure UDP port forwarding is enabled in Docker Compose (`8189:8189/udp`).
+The Python Vision AI worker broadcasts real-time telemetry frames over WebSocket (`ws://localhost:8765`) matching the following JSON schema:
+
+```json
+{
+  "timestamp": 1728723600.124,
+  "fps": 29.8,
+  "frame_width": 1280,
+  "frame_height": 720,
+  "detections": [
+    {
+      "track_id": 1,
+      "class": "person",
+      "confidence": 0.92,
+      "bbox_norm": [0.35, 0.42, 0.48, 0.85],
+      "center_norm": [0.415, 0.635]
+    }
+  ],
+  "tripwire": {
+    "count_in": 14,
+    "count_out": 8,
+    "last_cross_timestamp": 1728723598.54
+  },
+  "zone_alerts": [
+    {
+      "zone_id": "door_perimeter_1",
+      "status": "BREACH",
+      "intruding_track_ids": [1]
+    }
+  ]
+}
+```
+
+---
+
+## 8. Preventive Maintenance & Housekeeping
+
+Perform these maintenance procedures periodically to ensure optimal server health:
+
+### 8.1 Docker Volume & Storage Cleanup
+
+Over time, dangling Docker image layers and orphaned containers consume disk storage. Run cleanup bi-weekly:
+
+```bash
+# Check Docker disk space usage
+docker system df
+
+# Safely remove unused images and builder cache (does NOT remove persistent database volumes)
+docker image prune -a --filter "until=168h"
+docker builder prune -f
+```
+
+---
+
+### 8.2 Database Optimization & Index Rebuilding
+
+Execute quarterly to reclaim disk space and rebuild query execution plans:
+
+```bash
+# Execute VACUUM ANALYZE to update statistics and defragment tables
+docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "VACUUM (VERBOSE, ANALYZE);"
+
+# Reindex primary and foreign keys
+docker exec -it vizai-postgres psql -U vizai_admin -d vizai_camera_db -c "REINDEX DATABASE vizai_camera_db;"
+```
+
+---
+
+### 8.3 Security Updates & Dependency Audits
+
+Regularly check and update Node.js and Python packages:
+
+```bash
+# Audit backend dependencies
+cd server
+npm audit
+
+# Audit frontend dependencies
+cd ../client
+npm audit
+
+# Update Python packages
+cd ../vision-worker
+pip list --outdated
+```
+
+---
+
+## 9. Troubleshooting & Operational FAQs
+
+### Q1: WebRTC stream displays a black screen or fails to connect
+* **Root Cause 1:** The WebRTC media UDP port (`8189` for Node-A or `8190` for Node-B) is blocked by the host firewall or Docker network bridge.  
+  * **Solution:** Confirm UDP port mapping in `docker-compose.yml` (`8189:8189/udp`) and ensure your local firewall allows UDP traffic on these ports.
+* **Root Cause 2:** When running on a remote VPC or cloud server, the backend defaults to sending `localhost` and `127.0.0.1` candidate IPs to the operator's browser.  
+  * **Solution:** 
+    1. Set `STREAM_HOST=<VPC_IP>` in `server/.env`. When the backend boots, it automatically points camera URLs (`webrtc_url` / `hls_url`) and synchronizes the PostgreSQL `nodes` table to the VPC IP.
+    2. In `mediamtx-a.yml` and `mediamtx-b.yml`, add the VPC IP to `webrtcAdditionalHosts`.
+    3. Note that `docker-compose.yml` provides internal aliases `mediamtx-a` and `mediamtx-b` alongside `extra_hosts` (`host.docker.internal:host-gateway`) so containers communicate reliably on Linux VPCs.
+* **Workaround:** Switch the video tile to **HLS (Backup Stream)**. HLS operates purely over standard HTTP/TCP and easily bypasses strict corporate firewalls.
+
+---
 
 ### Q2: API server reports `ECONNREFUSED` connecting to PostgreSQL
-* **Cause:** PostgreSQL container has not finished its health check or is bound to a different port.
-* **Resolution:** 
-  * Check Docker container logs: `docker logs vizai-postgres`.
-  * Ensure `server/.env` has `DB_HOST=localhost` and `DB_PORT=5432`.
-
-### Q3: How do I reset the camera database to initial seed data?
-* Run the following commands to recreate the volume and re-run `init.sql`:
-  ```bash
-  docker compose down -v
-  docker compose up -d
-  ```
+* **Root Cause:** The PostgreSQL container has not finished its boot sequence or is not running.  
+  * **Solution:** Run `docker compose ps` to check container status. If restarting, run `docker compose logs postgres-db` to review database error logs. Ensure `server/.env` contains `DB_HOST=localhost` and `DB_PORT=5432`.
 
 ---
-*Document maintained by the VizAI Media Engine Engineering Team. For questions or hand-off inquiries, refer to the repository issue tracker.*
+
+### Q3: MediaMTX Auth Webhook Denies Stream (HTTP 403 Forbidden)
+* **Root Cause:** Strict security mode is active (`STREAM_SECURITY_STRICT=true`) but the client did not provide a signed playback token, or the webhook address cannot be reached by Docker.  
+  * **Solution:** For local testing, verify `STREAM_SECURITY_STRICT=false` in `server/.env`. On native Linux hosts, ensure `host.docker.internal` is mapped to the host IP or set the webhook address in `mediamtx-a.yml` to the host's actual IP address.
+
+---
+
+### Q4: Vision Worker Fails to Open RTSP Stream
+* **Root Cause:** The RTSP feed is either not publishing or the RTSP URL credentials are wrong.  
+  * **Solution:** Test the RTSP stream directly using VLC Media Player (`Media` -> `Open Network Stream` -> enter RTSP URL). Confirm that `mediamtx-pbt-a` is running and publishing `cam1_main`.
+
+---
+
+### Q5: How do I completely wipe and reset the database to factory default?
+* **Procedure:**  
+  1. Stop containers and destroy the persistent volume:
+     ```bash
+     docker compose down -v
+     ```
+  2. Start containers cleanly. `init.sql` will re-execute automatically:
+     ```bash
+     docker compose up -d
+     ```
+  3. Restart the API server to re-verify seeds and sync paths.
+
+---
+
+*Document compiled and maintained by the Telekom Malaysia (TM) VizAI Media Engine Engineering Team. For technical handover inquiries, please contact the project supervisor or engineering leads.*

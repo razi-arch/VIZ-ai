@@ -27,19 +27,33 @@ services:
     image: jrottenberg/ffmpeg:4.4-alpine
     container_name: stream-generator-a
     restart: always
-    command: -re -f lavfi -i testsrc=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://mediamtx-pbt-a:8554/cam1_main
+    links:
+      - "mediamtx-pbt-a:mediamtx-a"
+    depends_on:
+      - mediamtx-pbt-a
+    command: -re -f lavfi -i testsrc=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://mediamtx-a:8554/cam1_main
 
   stream-generator-b:
     image: jrottenberg/ffmpeg:4.4-alpine
     container_name: stream-generator-b
     restart: always
-    command: -re -f lavfi -i testsrc=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://mediamtx-pbt-b:8555/cam2_main
+    links:
+      - "mediamtx-pbt-b:mediamtx-b"
+    depends_on:
+      - mediamtx-pbt-b
+    command: -re -f lavfi -i testsrc=size=1280x720:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -f rtsp rtsp://mediamtx-b:8555/cam2_main
 
   # Streaming Node A
   mediamtx-pbt-a:
     image: bluenviron/mediamtx:latest
     container_name: mediamtx-pbt-a
     restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      default:
+        aliases:
+          - mediamtx-a
     ports:
       - "8554:8554"       # RTSP
       - "8888:8888"       # HLS
@@ -54,6 +68,12 @@ services:
     image: bluenviron/mediamtx:latest
     container_name: mediamtx-pbt-b
     restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      default:
+        aliases:
+          - mediamtx-b
     ports:
       - "8555:8555"       # RTSP
       - "8887:8887"       # HLS
