@@ -8,8 +8,11 @@ import type {
   NewUserPayload 
 } from '../types';
 
-// Use explicit backend API URL or relative proxy path
-const BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:3000';
+// Use explicit backend API URL or adapt dynamically to current host
+const BASE_URL = (import.meta.env.VITE_API_URL as string) || 
+  (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? `${window.location.protocol}//${window.location.hostname}:3000`
+    : 'http://localhost:3000');
 
 const TOKEN_KEY = 'vizai_auth_token';
 const USER_KEY = 'vizai_auth_user';

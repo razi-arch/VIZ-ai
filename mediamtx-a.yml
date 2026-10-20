@@ -8,6 +8,7 @@ webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
 webrtcAdditionalHosts:
   - 127.0.0.1
+  - 49.236.203.72
 
 paths:
   all_others: {}

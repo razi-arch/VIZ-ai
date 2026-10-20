@@ -322,7 +322,7 @@ export const StreamTile: React.FC<StreamTileProps> = ({
       {/* ================= DECOUPLED AI OVERLAY (YOLOv8) ================= */}
       <AIOverlay
         isVisible={isAIOverlayEnabled && !hasError && !isReloading}
-        wsUrl="ws://localhost:8765"
+        wsUrl={`ws://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8765`}
         streamName={camera.name}
       />
 
